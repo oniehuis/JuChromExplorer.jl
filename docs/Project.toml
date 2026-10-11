@@ -1,0 +1,14 @@
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+JuChrom = "202feb93-6b30-4454-a2e9-99db6534a6fb"
+JuChromExplorer = "0f21023a-da05-425f-b34e-2272dc96a0ef"
+
+[sources]
+JuChrom = {rev = "41f86fab54e73b9db44a8475930729062bc9854f", url = "https://github.com/oniehuis/JuChrom.jl"}
+JuChromExplorer = {path = ".."}
+
+[compat]
+Documenter = "1"
+JuChrom = "0.0.1"
+JuChromExplorer = "0.0.1"
+julia = "1.12"

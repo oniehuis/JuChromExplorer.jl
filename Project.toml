@@ -1,6 +1,6 @@
 name = "JuChromExplorer"
 uuid = "0f21023a-da05-425f-b34e-2272dc96a0ef"
-version = "0.1.0"
+version = "0.0.1"
 authors = ["Oliver Niehuis <oliver.niehuis@biologie.uni-freiburg.de>"]
 
 [deps]
@@ -8,7 +8,9 @@ GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
 JuChrom = "202feb93-6b30-4454-a2e9-99db6534a6fb"
 
 [sources]
-JuChrom = {path = "../JuChrom"}
+JuChrom = {rev = "41f86fab54e73b9db44a8475930729062bc9854f", url = "https://github.com/oniehuis/JuChrom.jl"}
 
 [compat]
 GLMakie = "0.13.15"
+JuChrom = "0.0.1"
+julia = "1.12"
