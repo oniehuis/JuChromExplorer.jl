@@ -262,3 +262,19 @@ end
         close(session.screen)
     end
 end
+
+@testset "Logarithmic XIC limits skip negative and zero intensities" begin
+    session = explore(xic_limit_fixture([-5.0, 0.0, 10.0], [-1.0, -2.0, -3.0]);
+        axis=(; yscale=log10), screen=HIDDEN_SCREEN)
+    try
+        session.hovered_ion[] = JuChromExplorer.IonTarget(40, nothing)
+        @test xic_values(session.runs[1]; preview=true) == [-5, 0, 10]
+        @test collect(xic_y(session)) ≈ [10, 10^1.05]
+        previous = session.axis.finallimits[]
+        session.hovered_ion[] = JuChromExplorer.IonTarget(50, nothing)
+        @test isnothing(JuChromExplorer.xic_data_limits(session))
+        @test session.axis.finallimits[] == previous
+    finally
+        close(session.screen)
+    end
+end

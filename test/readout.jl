@@ -287,3 +287,32 @@ end
         close(session.screen)
     end
 end
+
+@testset "Unpinned XIC readouts use displayed units and the run color" begin
+    data = MassScanMatrix([1.0, 2.0, 3.0], [40.0, 50.0]u"Th",
+        [1000.0 2000.0; -500.0 2000.0; 0.0 2000.0]u"pA")
+    incompatible = MassScanMatrix([1.0, 2.0, 3.0], [40.0, 50.0],
+        [1000.0 2000.0; -500.0 2000.0; 0.0 2000.0]u"pA")
+    session = explore([(data=data, color=:navy), (data=incompatible, color=:orange)];
+        intensityunit=u"nA", screen=HIDDEN_SCREEN)
+    try
+        move_hover!(session, 0.01)
+        hover_ion!(session, 40)
+        @test isempty(session.pinned_ions[])
+        @test session.runs[1].xic.preview_mz == 40
+        # Exercise the preview formatter directly; the middle header intentionally
+        # keeps its placeholder until an ion is pinned.
+        for (index, value) in enumerate(("1.0", "-0.5", "0.0"))
+            entry = only(JuChromExplorer.readout_ion_intensities(
+                session, session.runs[1], index, " nA"))
+            @test String(entry) == "m/z 40.0 Th: $value nA"
+            @test entry.attributes[:color] == session.runs[1].color
+        end
+        @test isnothing(session.runs[2].xic.preview_mz)
+        entries = JuChromExplorer.readout_ion_intensities(session, session.runs[2], 1, " nA")
+        @test String(only(entries)) == "XIC — incompatible m/z units"
+        @test ion_readout_text(session) == "Mass spectrum"
+    finally
+        close(session.screen)
+    end
+end

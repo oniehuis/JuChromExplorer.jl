@@ -135,9 +135,18 @@ end
         move_hover!(session, 0.5)
         tap_key!(session, Keyboard.h)
         @test any(group -> first(group) == "Middle mass spectrum", JuChromExplorer.help_groups(session))
-        for size in ((1100, 950), (750, 750), (500, 650))
+        default_fontsize = session.help.plots.footer.fontsize[]
+        for size in ((1100, 950), (750, 750), (500, 650), (500, 550), (1100, 950))
             resize!(session.figure, size...)
             check_help_bounds(session)
+            fontsize = session.help.plots.footer.fontsize[]
+            if size == (500, 550)
+                @test 0 < fontsize < default_fontsize
+                @test all(plot -> plot.fontsize[] == fontsize,
+                    (session.help.plots.headings..., session.help.plots.bodies...))
+            elseif size == (1100, 950)
+                @test fontsize == default_fontsize
+            end
             limits = session.axis.finallimits[]
             tap_key!(session, Keyboard.escape)
             viewports = panel_viewports(session)

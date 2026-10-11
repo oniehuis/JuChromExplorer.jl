@@ -322,3 +322,40 @@ end
         close(session.screen)
     end
 end
+
+@testset "Standalone scan selection replaces zoom and pauses at invalid positions" begin
+    session = zoom_session()
+    try
+        selection = JuChromExplorer.attach_selection!(session.axis,
+            [1000.0, 1100.0, 1200.0, 1300.0, 1400.0], session.zoom, session.hovered_scan)
+        interactions = Makie.interactions(session.axis)
+        @test !haskey(interactions, :explorerzoom)
+        @test first(interactions[:explorerselection])
+        @test last(interactions[:explorerselection]) === selection
+        original = session.axis.finallimits[]
+        selection_key!(session, Keyboard.a, Keyboard.press)
+        begin_drag!(session, (0.01, 0.5), (0.25, 0.5))
+        @test selection.selected_scans[] == [1, 2]
+        @test !isnothing(selection.previous_x)
+        # A classified drag outside the vertical plot bounds has no usable X.
+        event = Makie.MouseEvent(Makie.MouseEventTypes.leftdrag,
+            1.0, Point2d(1300, 5), Point2f(100, -1),
+            0.9, Point2d(1100, 5), Point2f(50, 50))
+        Makie.process_interaction(selection, event, session.axis)
+        @test isnothing(selection.previous_x)
+        @test selection.owns_gesture && selection.group == 1
+        @test selection.selected_scans[] == [1, 2]
+        move_hover!(session, 0.99)
+        left_button!(session, Mouse.release)
+        selection_key!(session, Keyboard.a, Keyboard.release)
+        # Re-entry starts at the new scan, without filling the gap outside the plot.
+        @test selection.selected_scans[] == [1, 2, 5]
+        @test session.axis.finallimits[] == original
+        @test isempty(session.zoom.history)
+        drag_zoom!(session, (0.2, 0.2), (0.8, 0.8))
+        @test length(session.zoom.history) == 1
+        @test selection.selected_scans[] == [1, 2, 5]
+    finally
+        close(session.screen)
+    end
+end

@@ -221,21 +221,23 @@ end
         good = run_fixture()
         higher = run_fixture(; values=[100.0, 10.0])
         callback = path -> path == badpath ? [bad, good] : higher
-        for initial in (nothing, good)
-            session = explore(initial; importer=callback,
-                spectrum_axis=(; xscale=log10), screen=HIDDEN_SCREEN)
+        # Failing in the result panel happens after the live spectrum panel was
+        # created, so rollback must also delete newly inserted Figure blocks.
+        for failed_panel in (:spectrum_axis, :result_axis), initial in (nothing, good)
+            panel_options = (; failed_panel => (; xscale=log10))
+            session = explore(initial; importer=callback, panel_options..., screen=HIDDEN_SCREEN)
             try
                 original = session.series
                 count = length(session.runs)
                 plots = length(session.axis.scene.plots)
-                blocks = length(session.figure.content)
+                blocks = copy(session.figure.content)
                 limits = session.axis.finallimits[]
                 next_id = session.next_id
                 @test_logs (:warn, r"Could not import") loadpaths!(session, badpath)
                 @test length(session.runs) == count
                 @test session.series === original
                 @test length(session.axis.scene.plots) == plots
-                @test length(session.figure.content) == blocks
+                @test session.figure.content == blocks
                 @test session.axis.finallimits[] == limits
                 @test session.next_id == next_id
                 @test length(session.import_errors) == 1

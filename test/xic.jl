@@ -262,3 +262,28 @@ end
         close(session.screen)
     end
 end
+
+@testset "XIC targets reject incompatible physical dimensions" begin
+    data = MassScanMatrix([1.0, 2.0], [40.0, 50.0]u"Th", [1.0 2.0; 3.0 4.0])
+    target = JuChromExplorer.IonTarget(40.0, u"s")
+    @test isnothing(JuChromExplorer.target_mz(target, data))
+    @test JuChromExplorer.target_mz(JuChromExplorer.IonTarget(40000.0, u"mTh"), data) ≈ 40
+end
+
+@testset "Abstract series XIC extraction handles sparse channels and intensity units" begin
+    data = MassScanSeries([
+        MassScan(1.0, [40.0, 60.0], [1000.0, 100.0]u"pA"),
+        MassScan(2.0, [50.0, 60.0], [250.0, 200.0]u"pA"),
+        MassScan(3.0, [40.0], [-500.0]u"pA"),
+    ])
+    before = [copy(rawintensities(data, i)) for i in 1:3]
+    # Select the abstract fallback explicitly, independently of the concrete
+    # MassScanSeries specialization that delegates to JuChrom.mzchrom.
+    fallback(mz, unit) = invoke(JuChromExplorer.extract_xic,
+        Tuple{JuChrom.AbstractMassScanSeries, Any, Any}, data, mz, unit)
+    @test fallback(40.0, u"nA") ≈ [1.0, 0.0, -0.5]
+    @test fallback(50.0, u"nA") ≈ [0.0, 0.25, 0.0]
+    @test fallback(40.0001, u"nA") == zeros(3)
+    @test fallback(40.0, nothing) == [1000.0, 0.0, -500.0]
+    @test [rawintensities(data, i) for i in 1:3] == before
+end

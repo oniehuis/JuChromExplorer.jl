@@ -230,3 +230,31 @@ end
         close(session.screen)
     end
 end
+
+@testset "An invalid drag endpoint cancels guides without changing the view" begin
+    session = zoom_session()
+    try
+        original = session.axis.finallimits[]
+        for kind in (Makie.MouseEventTypes.leftdrag, Makie.MouseEventTypes.leftdragstop)
+            begin_drag!(session, (0.2, 0.2), (0.8, 0.8))
+            @test session.zoom.active[]
+            # A non-finite transformed pointer coordinate cannot define a viewport.
+            event = Makie.MouseEvent(kind,
+                1.0, Point2d(NaN, 5), Point2f(100, 100),
+                0.9, Point2d(1080, 2), Point2f(50, 50))
+            Makie.process_interaction(session.zoom, event, session.axis)
+            @test isnothing(session.zoom.start)
+            @test !session.zoom.active[]
+            @test !session.zoom.vertical_guides.visible[]
+            @test !session.zoom.horizontal_guides.visible[]
+            left_button!(session, Mouse.release)
+            @test session.axis.finallimits[] == original
+            @test isempty(session.zoom.history)
+        end
+        drag_zoom!(session, (0.2, 0.2), (0.8, 0.8))
+        @test length(session.zoom.history) == 1
+        @test session.axis.finallimits[] != original
+    finally
+        close(session.screen)
+    end
+end
