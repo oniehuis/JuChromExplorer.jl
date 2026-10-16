@@ -140,7 +140,7 @@ function restore_import!(session, snapshot)
     if snapshot.active != 0
         activate_run!(session, snapshot.active)
     else
-        trim!(session.figure.layout)
+        show_empty_panels!(session)
         update_run_appearance!(session)
     end
     # Restoring a displayed rectangle via limits! would turn automatic bounds

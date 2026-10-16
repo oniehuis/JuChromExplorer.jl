@@ -37,6 +37,54 @@
     end
 end
 
+visible_panel_axes(session) = filter(block -> block isa Axis && block.scene.visible[],
+    session.figure.content)
+
+@testset "Empty explorers retain the three-panel layout through run changes" begin
+    ms = run_fixture()
+    fid = ChromScanSeries([ChromScan(60.0u"s", 1.0), ChromScan(180.0u"s", 3.0)])
+    for initial in (nothing, ms)
+        session = explore(initial; importer=nothing, screen=HIDDEN_SCREEN,
+            axis=(; xlabel="Retention time"), spectrum_axis=(; title="Live MS"),
+            result_axis=(; title="Combined MS"))
+        try
+            isnothing(initial) || remove_run!(session)
+            for data in (ms, fid, ms)
+                axes = visible_panel_axes(session)
+                @test length(axes) == 3
+                @test session.axis in axes
+                @test occursin("TIC", session.axis.title[])
+                @test session.axis.xlabel[] == "Retention time"
+                @test session.axis.ylabel[] == "Intensity"
+                lower = filter(ax -> ax !== session.axis, axes)
+                @test Set(String(ax.title[]) for ax in lower) == Set(("Live MS", "Combined MS"))
+                @test all(ax -> ax.xlabel[] == "m/z" &&
+                    ax.ylabel[] == "Relative intensity (%)", lower)
+                @test all(ax -> isempty(ax.scene.plots), lower)
+                areas = sort([Makie.viewport(ax.scene)[] for ax in axes]; by=r -> r.origin[2])
+                @test all(area -> all(area.widths .> 0), areas)
+                @test all(i -> maximum(areas[i])[2] < minimum(areas[i + 1])[2], 1:2)
+                @test isnothing(session.spectrum_axis) && isnothing(session.result_axis)
+
+                add_run!(session, data)
+                @test length(visible_panel_axes(session)) == (data === ms ? 3 : 1)
+                if data === ms
+                    move_hover!(session, 0.5)
+                    @test session.spectrum_scan[] == 2
+                    @test session.spectrum_axis in visible_panel_axes(session)
+                    @test session.result_axis in visible_panel_axes(session)
+                end
+                remove_run!(session)
+                @test isempty(session.runs)
+                @test length(visible_panel_axes(session)) == 3
+            end
+            @test length(filter(block -> block isa Axis, session.figure.content)) == 3
+        finally
+            close(session.screen)
+        end
+    end
+end
+
 @testset "Failed explorer initialization closes its window and rethrows" begin
     session = explore(run_fixture(); screen=HIDDEN_SCREEN)
     # GLMakie retains closed screens in a reuse pool; count only open windows.

@@ -46,7 +46,8 @@ different intensity units will need the future dual-axis support.
 
 ## Adding and removing runs
 
-Open an empty window and add prepared data successively:
+An empty window shows the chromatogram, mass spectrum, and mean spectrum difference
+panels without data. Open one and add prepared data successively:
 
 ```julia
 session = explore()
@@ -58,7 +59,8 @@ remove_run!(session)          # active run
 ```
 
 **Delete/Backspace** removes the active run from the window only; source files and
-input data are untouched. Removing the last run leaves an empty, reusable window.
+input data are untouched. Removing the last run restores the three empty panels
+in a reusable window.
 After all runs are removed, new data can establish a new coordinate system unless
 units were explicitly specified at creation. `add_run!` preserves the current TIC
 retention view and manual or drag-zoomed Y limits. Automatic Y limits adapt to

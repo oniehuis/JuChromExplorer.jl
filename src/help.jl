@@ -136,6 +136,9 @@ function refresh_help!(session)
         end
         card_height = 2padding + 34 + content_height + 18 + footer_height
         target = isnothing(session.spectrum_axis) ? session.axis : session.spectrum_axis
+        if isempty(session.runs) && !isnothing(session.empty_panels)
+            target = first(session.empty_panels)
+        end
         area = Makie.viewport(target.scene)[]
         center = minimum(area) .+ 0.5 .* area.widths
         x = clamp(center[1] - card_width / 2, 12, max(12, width - card_width - 12))

@@ -38,23 +38,28 @@ function padded_spectrum_mz_limits(lower, upper)
     return (max(0, lower - padding), upper + padding)
 end
 
-function create_spectrum_panel!(position, series, title;
-    axis=(;), style=DEFAULT_STYLES.spectrum,
-    zoom_style=DEFAULT_STYLES.zoom)
-    mz_unit = JuChrom.mzunit(series)
-    xlabel = isnothing(mz_unit) ? "m/z" : "m/z ($(mz_unit))"
-    lo, hi = spectrum_mz_limits(series)
+function create_spectrum_axis!(position, title;
+    xlabel="m/z", limits=(nothing, (0, 110)), axis=(;))
     options = merge((;
         title, titlealign=:left, titlesize=16,
         xlabel, ylabel="Relative intensity (%)",
-        limits=(lo, hi, 0, 110), yticklabelspace=DEFAULT_YTICKLABELSPACE,
+        limits, yticklabelspace=DEFAULT_YTICKLABELSPACE,
     ), axis)
     xs, ys = Makie.convert_limit_attribute(options.limits)
     lower = isnothing(ys) ? 0 : ys[1]
     # Keep label headroom above the 100% base peak. Each panel's configured
     # default upper bound is also its keyboard zoom-out/reset ceiling.
     options = merge(options, (; limits=(xs, (lower, spectrum_default_upper(options)))))
-    ax = Axis(position; options...)
+    return Axis(position; options...)
+end
+
+function create_spectrum_panel!(position, series, title;
+    axis=(;), style=DEFAULT_STYLES.spectrum,
+    zoom_style=DEFAULT_STYLES.zoom)
+    mz_unit = JuChrom.mzunit(series)
+    xlabel = isnothing(mz_unit) ? "m/z" : "m/z ($(mz_unit))"
+    lo, hi = spectrum_mz_limits(series)
+    ax = create_spectrum_axis!(position, title; xlabel, limits=(lo, hi, 0, 110), axis)
     # Makie's reactive buffers retain their initial element type. Match the source
     # m/z type from the start to avoid widening Float32 values in printed labels.
     empty_mzs = similar(spectrum_mzvalues(series, 1), 0)

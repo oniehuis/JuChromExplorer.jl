@@ -238,6 +238,7 @@ end
                 @test session.series === original
                 @test length(session.axis.scene.plots) == plots
                 @test session.figure.content == blocks
+                @test length(visible_panel_axes(session)) == 3
                 @test session.axis.finallimits[] == limits
                 @test session.next_id == next_id
                 @test length(session.import_errors) == 1

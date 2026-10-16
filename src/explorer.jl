@@ -40,7 +40,8 @@ Close the window with Shift+Q (either Shift key) or `close(session.screen)`.
 `spectrum_axis`, `spectrum_trace`, `spectrum_scan`, `spectrum_zoom`, `selection`,
 `selected_scans`, `subtracted_scans`, `result_axis`, `result_trace`,
 `result_spectrum`, and `result_zoom` refer to the active run's spectrum panels.
-They are `nothing` for an empty window or a run without mass spectra. Selection,
+They are `nothing` for an empty window or a run without mass spectra. Empty windows
+show blank chromatogram, mass-spectrum, and mean-spectrum-difference panels. Selection,
 last preview, manual spectrum limits, and spectrum zoom histories survive navigation.
 Treat the collection and derived index observables as read-only.
 
@@ -77,6 +78,7 @@ mutable struct ExplorerSession
     xic::XICState
     readout::ScanReadout
     help::ExplorerHelp
+    empty_panels::Union{Nothing, Tuple{Axis, Axis}}
 end
 
 const PANEL_PROPERTIES = (:spectrum_axis, :spectrum_trace, :spectrum_scan,
@@ -178,7 +180,7 @@ function update_run_appearance!(session)
     end
     run = active_run(session)
     title = if isnothing(run)
-        "JuChromExplorer — no runs loaded"
+        "Chromatogram · TIC — no runs loaded"
     elseif session.named || length(session.runs) > 1
         "$(run.name) · $(session.active_index)/$(length(session.runs))"
     else
@@ -198,6 +200,32 @@ function detach_panel!(ax)
     Makie.hide!(ax)
     content = ax.layoutobservables.gridcontent[]
     isnothing(content) || Makie.GridLayoutBase.remove_from_gridlayout!(content)
+    return nothing
+end
+
+function show_empty_panels!(session)
+    if isnothing(session.empty_panels)
+        header_style = (; titlesize=session.axis.titlesize[], titlefont=session.axis.titlefont[])
+        session.empty_panels = (
+            create_spectrum_axis!(session.figure[2, 1], "Mass spectrum";
+                axis=merge(header_style, session.options.spectrum_axis)),
+            create_spectrum_axis!(session.figure[3, 1], "Mean spectrum difference";
+                axis=merge(header_style, session.options.result_axis)),
+        )
+        # These axes describe the layout only; no run or interactive spectrum exists yet.
+        for ax in session.empty_panels, name in keys(Makie.interactions(ax))
+            deactivate_interaction!(ax, name)
+        end
+    end
+    for (row, ax) in zip(2:3, session.empty_panels)
+        session.figure[row, 1] = ax
+        Makie.unhide!(ax)
+    end
+    for (label, name, unit) in ((:xlabel, "Retention", session.retentionunit),
+        (:ylabel, "Intensity", session.intensityunit))
+        default = isnothing(unit) ? name : "$name ($unit)"
+        setproperty!(session.axis, label, get(session.options.axis, label, default))
+    end
     return nothing
 end
 
@@ -242,7 +270,10 @@ function deactivate_run!(session)
     run = active_run(session)
     cancel_drag!(session.zoom)
     session.hovered_scan[] = nothing
-    isnothing(run) && return
+    if isnothing(run)
+        isnothing(session.empty_panels) || foreach(detach_panel!, session.empty_panels)
+        return
+    end
     run.enabled[] = false
     if !isnothing(run.panels)
         cancel_selection_gesture!(run.panels.selection)
@@ -425,7 +456,7 @@ function remove_run!(session::ExplorerSession, index::Integer=session.active_ind
         haskey(Makie.interactions(session.axis), :explorerzoom) ||
             register_interaction!(session.axis, :explorerzoom, session.zoom)
         empty!(session.zoom.history)
-        trim!(session.figure.layout)
+        show_empty_panels!(session)
         update_run_appearance!(session)
     elseif index == previous
         session.active_index = 0
@@ -495,6 +526,8 @@ Open a GLMakie explorer for prepared JuChrom scan series or matrices, an ordered
 vector of runs, or no initial data. Names are optional; unnamed runs receive
 `Run 1`, `Run 2`, etc. Duplicate names get a suffix. ←/→ cycle through the runs;
 Unmodified ↑/↓ remain unassigned. Delete/Backspace removes the active run from the window.
+With no runs loaded, the same three panels are shown without data; removing the
+last run restores this empty layout.
 
 All TICs are overlaid by default; the active run is in front and inactive traces
 use 25% opacity. `overlay=false` shows only the active trace; `inactive_alpha`
@@ -617,7 +650,7 @@ function explore(input=nothing;
         title=get(styles.tic, :title, get(axis, :title, "Chromatogram")))
     session = ExplorerSession(ExplorerRun[], 0, 1, 1, fig, ax, window, hovered_scan,
         hover_line, hover_horizontal_line, tic_zoom, xs, retention_unit, intensity_unit, options, styles,
-        input isa Union{AbstractVector, Pair, NamedTuple}, ImportState(importer), XICState(), readout, help)
+        input isa Union{AbstractVector, Pair, NamedTuple}, ImportState(importer), XICState(), readout, help, nothing)
     attach_readout!(session)
     try
         for ((name, data, color), coordinates) in zip(prepared, coordinates)
@@ -631,6 +664,7 @@ function explore(input=nothing;
             end
             activate_run!(session, 1)
         else
+            show_empty_panels!(session)
             update_run_appearance!(session)
         end
         attach_window_controls!(session)
