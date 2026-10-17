@@ -35,6 +35,17 @@ loadpaths!
 waitimports!
 ```
 
+## Saving and reopening sessions
+
+See [Saving sessions](man/sessions.md) for file dialogs, compression, and compatibility.
+
+```@docs
+save_session
+load_session
+load_session!
+waitsessionio!
+```
+
 ## Clearing selections
 
 Scan groups belong to the active run; selected ion targets belong to the session.

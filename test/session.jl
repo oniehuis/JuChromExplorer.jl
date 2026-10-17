@@ -4,7 +4,8 @@
         aliases = (:series, :trace, :spectrum_axis, :spectrum_trace, :spectrum_scan,
             :spectrum_zoom, :selection, :selected_scans, :subtracted_scans,
             :result_axis, :result_trace, :result_spectrum, :result_zoom,
-            :importer, :importing, :import_status, :import_errors, :hovered_ion, :pinned_ions)
+            :importer, :importing, :import_status, :import_errors, :hovered_ion, :pinned_ions,
+            :session_path, :session_status, :session_error)
         names = propertynames(session)
         @test names == propertynames(session, false) == propertynames(session, true)
         @test Set(names) == Set((fieldnames(ExplorerSession)..., aliases...))

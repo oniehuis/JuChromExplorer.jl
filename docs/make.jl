@@ -42,6 +42,7 @@ makedocs(
             "Spectra and scan selection" => "man/spectra.md",
             "Ion chromatograms" => "man/xic.md",
             "Importing files" => "man/importers.md",
+            "Saving sessions" => "man/sessions.md",
             "Interaction and axes" => "man/interaction.md",
             "Styling" => "man/styling.md",
         ],

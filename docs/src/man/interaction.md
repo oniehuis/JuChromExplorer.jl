@@ -11,6 +11,9 @@ under the mouse; scan and ion selection require mass-spectral data.
 | Window | **Delete / Backspace** | Remove the active run from the viewer |
 | Window | **H** | Show or hide help |
 | Window | **Shift+Q** | Close the window (either Shift key) |
+| Window | **Cmd/Ctrl+S** | Save session (choose a filename on first save) |
+| Window | **Cmd/Ctrl+Shift+S** | Save session as another file |
+| Window | **Cmd/Ctrl+O** | Restore a session in the current window |
 | Any of the three panels | **Left-drag** | Zoom into a rectangle |
 | Any of the three panels | **Double-click** | Undo one zoom step |
 | Any of the three panels | **Left Shift + ↑ / ↓** | Make peaks taller / shorter |
@@ -25,7 +28,8 @@ under the mouse; scan and ion selection require mass-spectral data.
 | Help card | **H / Esc** | Close help |
 
 See [Spectra and scan selection](spectra.md) and [Ion chromatograms](xic.md) for
-selection and arithmetic details.
+selection and arithmetic details. Session shortcuts use Cmd on macOS and Ctrl on
+Windows/Linux; see [Saving sessions](sessions.md).
 
 ## Hovering over scans
 

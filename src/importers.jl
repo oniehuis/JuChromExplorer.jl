@@ -38,7 +38,8 @@ calls in the configuration resolve beside that file. Invalid configurations rais
 an error before a window is opened.
 
 `explore(importer=my_importer)` bypasses this file; `explore(importer=nothing)`
-bypasses it and disables file drops. The package never creates the configuration.
+bypasses it and disables data-file drops. Saved explorer sessions can still be
+dropped to reopen them. The package never creates the configuration.
 """
 function default_importer(path::AbstractString=default_importer_path())
     isfile(path) || return nothing

@@ -1,5 +1,7 @@
 [deps]
 GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
+JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
+Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
 JuChrom = "202feb93-6b30-4454-a2e9-99db6534a6fb"
 JuChromExplorer = "0f21023a-da05-425f-b34e-2272dc96a0ef"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
@@ -13,3 +15,4 @@ path = ".."
 
 [compat]
 GLMakie = "0.13"
+JLD2 = "0.6.7"

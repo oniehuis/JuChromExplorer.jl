@@ -13,8 +13,9 @@ ExplorerHelp() = ExplorerHelp(Observable(false), Observable(false), nothing, not
 
 function help_groups(session)
     ms = !isnothing(session.spectrum_axis)
+    modifier = Sys.isapple() ? "Cmd" : "Ctrl"
     groups = [
-        ("Window", "← / →   Previous / next run (wrap)\nDelete / Backspace   Remove run from viewer\nShift + Q   Close window"),
+        ("Window", "← / →   Previous / next run (wrap)\nDelete / Backspace   Remove run from viewer\n$modifier + S   Save session\n$modifier + Shift + S   Save session as…\n$modifier + O   Open session\nShift + Q   Close window"),
         (ms ? "All three panels — under the mouse" : "Plot under the mouse",
             "Left-drag   Zoom into a region\nDouble-click   Undo one zoom level\nLeft Shift + ↑ / ↓   Peaks taller / shorter\nLeft Shift + R   Reset Y scaling\nEsc   Cancel drag"),
         (ms ? "Upper chromatogram" : "Chromatogram",

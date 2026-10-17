@@ -57,5 +57,9 @@ session = explore(series; retentionunit=u"minute")
 Move over the chromatogram to inspect spectra. Press **H** for keyboard and mouse
 help, or **Shift+Q** to close the window. The Julia REPL remains available.
 
+Press **Cmd+S** on macOS or **Ctrl+S** on Windows/Linux to save all loaded data and
+working views in a JLD2 session. Add **Shift** for Save As, or use **Cmd+O / Ctrl+O**
+to restore a session in the current window. Session files are uncompressed by default.
+
 See the [documentation](https://oniehuis.github.io/JuChromExplorer.jl/dev/) for
-multiple runs, ion selection, optional drag-and-drop importers, and styling.
+multiple runs, ion selection, session files, optional drag-and-drop importers, and styling.

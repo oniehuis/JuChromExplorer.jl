@@ -55,6 +55,11 @@ Both plots are `nothing` for FID data.
 `importer` is the resolved callback or `nothing`. `importing[]` and
 `import_status[]` report loading progress. `import_errors` contains the failed
 paths, exceptions, and backtraces from the latest import operation.
+
+`session_path` is the last saved/opened JLD2 filename or `nothing`.
+`session_status[]` and `session_error` report keyboard save/open operations.
+[`save_session`](@ref), [`load_session`](@ref), and [`load_session!`](@ref) preserve
+data and working views.
 """
 mutable struct ExplorerSession
     runs::Vector{ExplorerRun}
@@ -79,6 +84,7 @@ mutable struct ExplorerSession
     readout::ScanReadout
     help::ExplorerHelp
     empty_panels::Union{Nothing, Tuple{Axis, Axis}}
+    storage::SessionFileState
 end
 
 const PANEL_PROPERTIES = (:spectrum_axis, :spectrum_trace, :spectrum_scan,
@@ -94,6 +100,9 @@ function Base.getproperty(session::ExplorerSession, name::Symbol)
     name == :importing && return getfield(session, :import_state).importing
     name == :import_status && return getfield(session, :import_state).status
     name == :import_errors && return getfield(session, :import_state).errors
+    name == :session_path && return getfield(session, :storage).path
+    name == :session_status && return getfield(session, :storage).status
+    name == :session_error && return getfield(session, :storage).error
     if name in (:series, :trace, PANEL_PROPERTIES...)
         run = active_run(session)
         isnothing(run) && return nothing
@@ -105,7 +114,8 @@ end
 
 Base.propertynames(::ExplorerSession, private::Bool=false) =
     (fieldnames(ExplorerSession)..., :series, :trace, PANEL_PROPERTIES...,
-        :importer, :importing, :import_status, :import_errors, :hovered_ion, :pinned_ions)
+        :importer, :importing, :import_status, :import_errors, :hovered_ion, :pinned_ions,
+        :session_path, :session_status, :session_error)
 
 function Base.show(io::IO, session::ExplorerSession)
     print(io, "ExplorerSession(", length(session.runs), " runs, active=", session.active_index, ")")
@@ -603,18 +613,33 @@ navigation and removal never reassign colors. Later additions continue the seque
 path and returns prepared data, `name => data`, a run NamedTuple, or a collection
 of these. Without
 an explicit keyword, [`default_importer`](@ref) loads the optional personal
-configuration. `importer=nothing` disables drops and bypasses that configuration.
+configuration. `importer=nothing` disables data imports and bypasses that configuration.
 See [`loadpaths!`](@ref) for naming, validation, failure handling and progress.
+
+Cmd+S (macOS) / Ctrl+S saves the session as JLD2; add Shift for Save As.
+Cmd+O / Ctrl+O replaces the current window's contents with a saved session.
+Session files can also be dropped into the explorer, including with
+`importer=nothing`. The first save asks
+for a filename; later saves reuse it. `session_compression=:none` is the default;
+`:deflate` and `:zstd` enable lossless compression. `session_dialog(action, path)`
+can replace the native file picker; see [`load_session`](@ref).
 """
-function explore(input=nothing;
+explore(input=nothing; kwargs...) = build_explorer(input; kwargs...)
+
+# Rebuilding a session can reuse its native window and Julia handle. The caller
+# keeps the old figure alive until the replacement has been restored successfully.
+function build_explorer(input=nothing;
+    window=nothing, target=nothing,
     retentionunit=nothing, intensityunit=nothing,
     figure::NamedTuple=(;), axis::NamedTuple=(;), spectrum_axis::NamedTuple=(;),
     result_axis::NamedTuple=(;), screen::NamedTuple=(;), tic::NamedTuple=(;),
     hover::NamedTuple=(;), zoom::NamedTuple=(;), spectrum::NamedTuple=(;),
     selection::NamedTuple=(;), subtraction::NamedTuple=(;), result_spectrum::NamedTuple=(;),
     xic::NamedTuple=(;), ion::NamedTuple=(;),
-    overlay::Bool=true, inactive_alpha::Real=0.25, importer=default_importer(), kwargs...)
+    overlay::Bool=true, inactive_alpha::Real=0.25, importer=default_importer(),
+    session_compression=DEFAULT_SESSION_COMPRESSION, session_dialog=native_session_dialog, kwargs...)
     validate_importer(importer)
+    session_compression = validate_session_compression(session_compression)
     0 <= inactive_alpha <= 1 || throw(ArgumentError("inactive_alpha must be between 0 and 1."))
     styles = resolve_styles(; tic, hover, zoom, spectrum, selection, subtraction,
         result_spectrum, xic, ion, legacy_tic=(; kwargs...))
@@ -643,16 +668,26 @@ function explore(input=nothing;
     xs = Observable(Float64[])
     hovered_scan, hover_line, hover_horizontal_line = attach_hover!(ax, xs;
         suspended=tic_zoom.active, paused=help.paused, style=styles.hover)
-    window = GLMakie.Screen(;
-        merge((; title="JuChromExplorer", focus_on_show=true, framerate=60.0), screen)...)
-    options = (; axis, spectrum_axis, result_axis, retentionunit, intensityunit,
+    if isnothing(window)
+        window = GLMakie.Screen(;
+            merge((; title="JuChromExplorer", focus_on_show=true, framerate=60.0), screen)...)
+    end
+    options = (; axis, spectrum_axis, result_axis, retentionunit, intensityunit, figure,
+        session_compression,
         overlay, inactive_alpha=Float64(inactive_alpha),
         title=get(styles.tic, :title, get(axis, :title, "Chromatogram")))
     session = ExplorerSession(ExplorerRun[], 0, 1, 1, fig, ax, window, hovered_scan,
         hover_line, hover_horizontal_line, tic_zoom, xs, retention_unit, intensity_unit, options, styles,
-        input isa Union{AbstractVector, Pair, NamedTuple}, ImportState(importer), XICState(), readout, help, nothing)
-    attach_readout!(session)
+        input isa Union{AbstractVector, Pair, NamedTuple}, ImportState(importer), XICState(), readout, help, nothing,
+        isnothing(target) ? SessionFileState(session_dialog, window.config.title) : target.storage)
+    if !isnothing(target)
+        for name in fieldnames(ExplorerSession)
+            setfield!(target, name, getfield(session, name))
+        end
+        session = target
+    end
     try
+        attach_readout!(session)
         for ((name, data, color), coordinates) in zip(prepared, coordinates)
             append_run!(session, name, data, coordinates, color)
         end
@@ -674,8 +709,9 @@ function explore(input=nothing;
         attach_xic!(session)
         attach_importer!(session)
         attach_help!(session)
+        attach_session_files!(session)
     catch
-        close(window)
+        isnothing(target) && close(window)
         rethrow()
     end
     return session

@@ -98,7 +98,8 @@ injected into `Main`. The configuration is Julia code and is not created or modi
 by the explorer.
 
 An explicit `explore(importer=my_function)` bypasses the configuration file.
-`explore(importer=nothing)` bypasses it and disables drag-and-drop. A missing file
+`explore(importer=nothing)` bypasses it and disables data-file drops. Saved explorer
+sessions can still be dropped to reopen them. A missing file
 means no default importer. An invalid configuration raises an error before opening
 a window; the message includes its path. To load a different configuration file
 explicitly, use `explore(importer=default_importer("/path/to/config.jl"))`.
