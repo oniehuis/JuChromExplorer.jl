@@ -9,6 +9,7 @@ mutable struct ExplorerRun
     retentions::Vector{Float64}
     trace::Any
     color::Any
+    original_color::Any
     alpha::Float64
     enabled::Observable{Bool}
     panels::Any
@@ -22,7 +23,10 @@ end
 A window containing an ordered collection of prepared runs. `runs` and
 `active_index` describe the collection; use `add_run!`, `remove_run!`,
 `activate_run!` and `next_run!` to change it. Each run has a stable `id` and an
-assigned TIC `color`, stored separately from its original data.
+assigned TIC `color` and initial `original_color`, stored separately from its original data.
+Left Shift + 1–9 select a color from the window's fixed `tic.palette` for the
+active run's left-axis TIC; unavailable slots do nothing. Left Shift + 0 restores
+its original color. Right Shift is reserved for a future secondary Y axis.
 
 `series` and `trace` refer to the active run and are `nothing` in an empty window.
 The original input, including matrix variances, is retained without copying.
@@ -381,7 +385,7 @@ function append_run_data!(session, name, data, xs, explicit_color)
         retentionunit=session.retentionunit, intensityunit=session.intensityunit,
         axis=session.options.axis, merge(style, (; color))...)
     run = ExplorerRun(session.next_id, unique_run_name(session.runs, name), data, xs,
-        trace, deepcopy(trace.color[]), Float64(trace.alpha[]), Observable(false), nothing,
+        trace, deepcopy(trace.color[]), deepcopy(trace.color[]), Float64(trace.alpha[]), Observable(false), nothing,
         create_xic_traces!(session, data, trace.color[]), nothing)
     push!(session.runs, run)
     session.next_id += 1
@@ -526,6 +530,45 @@ function attach_navigation!(session)
     return nothing
 end
 
+function set_run_palette_color!(session, index)
+    run = active_run(session)
+    isnothing(run) && return false
+    palette = session.styles.tic.palette
+    index in 0:min(9, length(palette)) || return false
+    color = index == 0 ? run.original_color : palette[index]
+    run.color = deepcopy(color)
+    run.trace.color[] = color
+    # Refresh colors without refitting axes or changing the ion palette sequence.
+    update_xic_data!(session, run)
+    update_run_appearance!(session)
+    return true
+end
+
+function attach_run_color_controls!(session)
+    owner, ev = session.axis.scene, events(session.axis)
+    on(owner, ev.keyboardbutton; priority=3) do event
+        ev.window_open[] && ev.hasfocus[] || return Consume(false)
+        event.action == Keyboard.press || return Consume(false)
+        key = Int(event.key)
+        index = if Int(Keyboard._0) <= key <= Int(Keyboard._9)
+            key - Int(Keyboard._0)
+        elseif Int(Keyboard.kp_0) <= key <= Int(Keyboard.kp_9)
+            key - Int(Keyboard.kp_0)
+        else
+            return Consume(false)
+        end
+        ispressed(owner, Keyboard.left_shift) || return Consume(false)
+        # Match the Y-scaling controls: Right Shift belongs to the future secondary
+        # axis. Never redirect it, or an ambiguous two-Shift chord, to the left TIC.
+        any(key -> ispressed(owner, key), (Keyboard.right_shift,
+            Keyboard.left_control, Keyboard.right_control, Keyboard.left_alt,
+            Keyboard.right_alt, Keyboard.left_super, Keyboard.right_super,
+            Mouse.left, Mouse.middle, Mouse.right)) && return Consume(false)
+        return Consume(set_run_palette_color!(session, index))
+    end
+    return nothing
+end
+
 """
     explore(data; kwargs...)
     explore(["Sample A" => data_a, "Sample B" => data_b]; kwargs...)
@@ -608,6 +651,13 @@ assignments (Makie's Wong palette by default). A run NamedTuple requires `data`
 and accepts optional `name` and `color`. Color precedence is per-run `color`,
 then `tic.color`, then the palette. Explicit colors do not consume palette entries;
 navigation and removal never reassign colors. Later additions continue the sequence.
+The palette is fixed when the window opens. Left Shift + 1–9 (including the numeric
+keypad) recolor the active run's left-axis TIC using the corresponding palette entry;
+keys beyond the palette length do nothing. Left Shift + 0 restores its original
+color. Right Shift + 0–9 is reserved for a future secondary Y axis; bare digits and
+chords holding both Shift keys do nothing. These shortcuts
+also update XICs and markers that use run colors, preserving separate ion colors.
+H shows numbered color swatches. Save/load preserves both the override and reset color.
 
 `importer=callback` enables file/directory drops. The callback receives an absolute
 path and returns prepared data, `name => data`, a run NamedTuple, or a collection
@@ -704,6 +754,7 @@ function build_explorer(input=nothing;
         end
         attach_window_controls!(session)
         attach_navigation!(session)
+        attach_run_color_controls!(session)
         attach_upper_limit_controls!(session)
         display(window, fig)
         attach_xic!(session)

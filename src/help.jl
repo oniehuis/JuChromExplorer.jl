@@ -15,7 +15,7 @@ function help_groups(session)
     ms = !isnothing(session.spectrum_axis)
     modifier = Sys.isapple() ? "Cmd" : "Ctrl"
     groups = [
-        ("Window", "← / →   Previous / next run (wrap)\nDelete / Backspace   Remove run from viewer\n$modifier + S   Save session\n$modifier + Shift + S   Save session as…\n$modifier + O   Open session\nShift + Q   Close window"),
+        ("Window", "← / →   Previous / next run (wrap)\nDelete / Backspace   Remove run from viewer\nLeft Shift + 1–9   Active left-axis TIC color\nLeft Shift + 0   Restore original TIC color\nRight Shift + 0–9   Right axis (reserved)\n$modifier + S   Save session\n$modifier + Shift + S   Save session as…\n$modifier + O   Open session\nShift + Q   Close window"),
         (ms ? "All three panels — under the mouse" : "Plot under the mouse",
             "Left-drag   Zoom into a region\nDouble-click   Undo one zoom level\nLeft Shift + ↑ / ↓   Peaks taller / shorter\nLeft Shift + R   Reset Y scaling\nEsc   Cancel drag"),
         (ms ? "Upper chromatogram" : "Chromatogram",
@@ -104,10 +104,14 @@ function refresh_help!(session)
         footer = "Click/drag uses the left mouse button.  H or Esc closes help."
         !isnothing(session.importer) && (footer *= "\nDrop files into the window to add runs (after closing help).")
         plots.footer.text[] = footer
+        plots.palette.text[] = rich("Left Shift + number: ",
+            (rich("$i ", rich("■  "; color)) for (i, color) in
+                enumerate(Iterators.take(session.styles.tic.palette, 9)))...,
+            " (unused keys do nothing)")
         # Measure actual wrapped text, so help fits without affecting Axis limits
         # or GridLayout. Reduce font size only if the window is unusually short.
         positions = fill(Point2f(0), 4)
-        content_height, footer_height = 0.0, 0.0
+        content_height, palette_height, footer_height = 0.0, 0.0, 0.0
         for attempt in 1:3
             bottoms = fill(0.0, columns)
             for i in eachindex(plots.headings)
@@ -130,12 +134,15 @@ function refresh_help!(session)
             plots.footer.fontsize[] = fontsize
             plots.footer.word_wrap_width[] = card_width - 2padding
             footer_height = Makie.boundingbox(plots.footer, :data).widths[2]
+            plots.palette.fontsize[] = fontsize
+            plots.palette.word_wrap_width[] = card_width - 2padding
+            palette_height = Makie.boundingbox(plots.palette, :data).widths[2]
             content_height = maximum(bottoms) - 16
-            total = 2padding + 34 + content_height + 18 + footer_height
+            total = 2padding + 34 + content_height + 18 + palette_height + 8 + footer_height
             total <= height - 24 && break
             fontsize *= max(0.5, (height - 24) / total)
         end
-        card_height = 2padding + 34 + content_height + 18 + footer_height
+        card_height = 2padding + 34 + content_height + 18 + palette_height + 8 + footer_height
         target = isnothing(session.spectrum_axis) ? session.axis : session.spectrum_axis
         if isempty(session.runs) && !isnothing(session.empty_panels)
             target = first(session.empty_panels)
@@ -155,6 +162,7 @@ function refresh_help!(session)
             plots.bodies[i][1][] = [Point2f(x + padding + position[1], heading_top - heading_height - 6)]
         end
         plots.footer[1][] = [Point2f(x + padding, y + padding + footer_height)]
+        plots.palette[1][] = [Point2f(x + padding, y + padding + footer_height + 8 + palette_height)]
     finally
         state.updating = false
     end
@@ -177,7 +185,7 @@ function attach_help!(session)
     end
     state.plots = (; background, title=label("Keyboard and mouse controls"; font=:bold, fontsize=14.0),
         headings=[label(" "; font=:bold) for _ in 1:4],
-        bodies=[label(" ") for _ in 1:4], footer=label(" "))
+        bodies=[label(" ") for _ in 1:4], palette=label(rich(" ")), footer=label(" "))
     onany(owner, Makie.viewport(owner), Makie.viewport(session.axis.scene)) do _...
         refresh_help!(session)
     end

@@ -76,5 +76,9 @@ empty. Existing fields such as `series`, `trace`, `selected_scans`, and
 windows or chromatographic data without mass spectra. Treat collection state as
 read-only and use the functions above to change it.
 
-See [Styling](styling.md) for palettes and per-run colors, and
+Use **Left Shift + 1–9** to select a color from the window's fixed palette for the
+active run's left-axis TIC; unavailable slots do nothing. **Left Shift + 0** restores
+its original color. **Right Shift + 0–9** is reserved for a future right-axis TIC
+and currently does nothing. Press **H** for
+the numbered palette swatches. See [Styling](styling.md) for palettes and per-run colors, and
 [Importing files](importers.md) for adding runs from files.

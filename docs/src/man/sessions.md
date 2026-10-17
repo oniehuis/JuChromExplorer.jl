@@ -78,13 +78,17 @@ on the data and their storage layout.
 
 The file preserves:
 
-- All runs, their ordering, IDs, names, colors, and the active run.
+- All runs, their ordering, IDs, names, current and original colors, and the active run.
 - Selected ions, ion colors, the current ion preview, and TIC/XIC scaling state.
 - Every visited run's selected/subtracted scans, extracted result spectrum, last
   inspected scan, spectrum view, and zoom histories. Unvisited runs remain lazy.
 - Shared chromatogram limits and history, and automatic versus fixed limits,
   axis scales, reversals, labels, and appearance for all panels.
 - Explorer styles, figure size, and whether the help card is open.
+
+The fixed palette and number-key color overrides are retained. **Left Shift + 0** still restores
+each run's original color after loading; older files without that information use
+the saved color as the reset value. See [Styling](styling.md).
 
 Plot objects are rebuilt; loading into an existing session retains its window.
 Running imports, in-progress gestures,

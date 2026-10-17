@@ -14,7 +14,7 @@ function check_help_bounds(session)
     @test all(minimum(card) .>= minimum(window))
     @test all(maximum(card) .<= maximum(window))
     plots = session.help.plots
-    for plot in (plots.title, plots.headings..., plots.bodies..., plots.footer)
+    for plot in (plots.title, plots.headings..., plots.bodies..., plots.palette, plots.footer)
         plot.visible[] || continue
         bounds = Makie.boundingbox(plot, :data)
         @test all(minimum(bounds)[1:2] .>= minimum(card) .- 1)
@@ -143,7 +143,7 @@ end
             if size == (500, 550)
                 @test 0 < fontsize < default_fontsize
                 @test all(plot -> plot.fontsize[] == fontsize,
-                    (session.help.plots.headings..., session.help.plots.bodies...))
+                    (session.help.plots.headings..., session.help.plots.bodies..., session.help.plots.palette))
             elseif size == (1100, 950)
                 @test fontsize == default_fontsize
             end

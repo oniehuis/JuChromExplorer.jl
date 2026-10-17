@@ -9,6 +9,9 @@ under the mouse; scan and ion selection require mass-spectral data.
 | --- | --- | --- |
 | Window | **← / →** | Previous / next run, wrapping at either end |
 | Window | **Delete / Backspace** | Remove the active run from the viewer |
+| Window | **Left Shift + 1–9** | Assign the matching palette color to the active left-axis TIC; unavailable slots do nothing |
+| Window | **Left Shift + 0** | Restore the active left-axis TIC's original color |
+| Window | **Right Shift + 0–9** | Reserved for a future right-axis TIC; currently no effect |
 | Window | **H** | Show or hide help |
 | Window | **Shift+Q** | Close the window (either Shift key) |
 | Window | **Cmd/Ctrl+S** | Save session (choose a filename on first save) |
@@ -29,7 +32,11 @@ under the mouse; scan and ion selection require mass-spectral data.
 
 See [Spectra and scan selection](spectra.md) and [Ion chromatograms](xic.md) for
 selection and arithmetic details. Session shortcuts use Cmd on macOS and Ctrl on
-Windows/Linux; see [Saving sessions](sessions.md).
+Windows/Linux; see [Saving sessions](sessions.md). Color shortcuts use **Left Shift**
+with number-row or numeric-keypad keys and the palette fixed when the window was opened.
+Bare digits, Right Shift alone, both Shift keys together, and extra modifiers do not recolor the left-axis TIC.
+They apply anywhere in the focused window, with no mouse button held. See
+[Changing the active run's color](styling.md#Changing-the-active-run's-color).
 
 ## Hovering over scans
 
@@ -166,9 +173,10 @@ including while help is open. The card is centered over the middle spectrum, or 
 chromatogram when there is no MS panel, without changing the panel layout.
 It separates window navigation, controls shared by **all three panels**, scan
 selection, and ion selection. Chromatogram-only and empty sessions omit MS-only
-controls. Import guidance appears only when an importer is configured.
+controls. A row of numbered swatches shows the available run-color shortcuts.
+Import guidance appears only when an importer is configured.
 
-While help is open, hover, selection, zoom, navigation, and file drops are paused.
+While help is open, hover, selection, zoom, navigation, run recoloring, and file drops are paused.
 Existing selections, spectra, axis limits, and zoom histories are preserved.
 Opening help cancels an unfinished drag without undoing scans already marked.
 Plot interaction resumes after help closes and any held mouse buttons are released.

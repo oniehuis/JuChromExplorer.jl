@@ -41,7 +41,8 @@ end
 
 function session_snapshot(session)
     scale = session.xic.scaling
-    runs = [(; run.id, run.name, data=run.series, color=session_value(run.color), run.alpha,
+    runs = [(; run.id, run.name, data=run.series, color=session_value(run.color),
+        original_color=session_value(run.original_color), run.alpha,
         run.inspected_scan, trace_style=snapshot_plot(run.trace, SESSION_LINE_ATTRIBUTES),
         panels=snapshot_panels(run.panels)) for run in session.runs]
     return (; runs, active=session.active_index, session.next_id, session.next_palette_index,
@@ -152,6 +153,7 @@ function validate_session_snapshot(snapshot)
     for run in runs
         data = run.data
         run_input((; data, run.name, run.color), run.name)
+        run_color(get(run, :original_color, run.color), "Original run color")
         validate_run(data, run.name, snapshot.retentionunit, snapshot.intensityunit)
         count = JuChrom.scancount(data)
         isnothing(run.inspected_scan) || run.inspected_scan in 1:count ||
@@ -351,6 +353,8 @@ function restore_session!(session, snapshot, compression)
         for saved in snapshot.runs
             coordinates = validate_run(saved.data, saved.name, session.retentionunit, session.intensityunit)
             run = append_run!(session, saved.name, saved.data, coordinates, saved.color)
+            # Older sessions predate color overrides; their saved color is the reset value.
+            run.original_color = session_value(get(saved, :original_color, saved.color))
             run.id, run.alpha, run.inspected_scan = saved.id, saved.alpha, saved.inspected_scan
             restore_plot!(run.trace, saved.trace_style)
             if !isnothing(saved.panels)

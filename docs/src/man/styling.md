@@ -25,8 +25,37 @@ for a shared default color, or `tic.palette` for successive automatic colors.
 The default palette is Makie's seven-color Wong palette; palettes repeat when
 exhausted. Colors remain attached to their runs during navigation and deletion.
 New additions and file drops continue the palette sequence, even after removing
-all runs. `session.runs[i].color` records the assigned color; the original JuChrom
-data is unchanged.
+all runs. `session.runs[i].color` records the current color and
+`session.runs[i].original_color` retains its initial assignment; the original
+JuChrom data is unchanged.
+
+### Changing the active run's color
+
+Choose `tic.palette` when opening the explorer. Each window keeps its own fixed
+palette snapshot; later changes to the supplied vector or Makie theme do not alter
+it. Press **Left Shift + 1–9** to assign the corresponding palette entry to the
+active run's left-axis TIC,
+regardless of which panel the pointer is over. Only the first nine entries have
+shortcuts. If the palette has five entries, **Left Shift + 6–9 do nothing**;
+shortcuts do not wrap. Press **Left Shift + 0** to restore the run's original color, including an explicit
+per-run color or a shared `tic.color` default.
+
+The number row and numeric keypad both work. Hold **Left Shift** without Ctrl,
+Cmd, Alt, or Right Shift. **Right Shift + 0–9** is reserved for a future secondary
+Y axis and currently has no effect; it never recolors the left-axis TIC. Bare digits
+and chords with both Shift keys also do nothing. Color shortcuts are inactive while help is open, while a mouse
+button is held, in an empty window, or when the window is unfocused. Press **H**
+to see the available palette entries as numbered color swatches.
+
+Overrides remain attached to the run through navigation and removal of other
+runs. They do not consume automatic palette slots or change the palette itself.
+They update the TIC, XICs that use run colors, selected-ion markers, and the
+matching ion readout. Multiple-ion colors remain independent. Axis limits,
+selections, and zoom histories are preserved.
+
+[Saving a session](sessions.md) preserves the palette, overrides, and original
+colors, so **Left Shift + 0** still restores the original assignment after reopening it.
+For older session files without an original color, **Left Shift + 0** restores the saved color.
 
 ## Window styles
 
