@@ -47,16 +47,20 @@ on run argv
 end run
 """
 
-function native_session_dialog(action::Symbol, suggested::AbstractString)
+# Keep platform and UI calls injectable so both native paths can be tested without
+# displaying modal dialogs or changing process-wide methods.
+function native_session_dialog(action::Symbol, suggested::AbstractString;
+    isapple::Bool=Sys.isapple(), read_command=read,
+    save_file=NativeFileDialog.save_file, pick_file=NativeFileDialog.pick_file)
     action in (:save, :open) || throw(ArgumentError("Unknown session dialog action: $action"))
     directory = isdir(suggested) ? suggested : dirname(suggested)
     isdir(directory) || (directory = homedir())
-    if Sys.isapple()
+    if isapple
         name = isdir(suggested) ? "Session.jld2" : basename(suggested)
-        return chomp(read(`osascript -e $MACOS_SESSION_DIALOG $action $directory $name`, String))
+        return chomp(read_command(`osascript -e $MACOS_SESSION_DIALOG $action $directory $name`, String))
     end
-    return action == :save ? NativeFileDialog.save_file(directory; filterlist="jld2") :
-        NativeFileDialog.pick_file(directory; filterlist="jld2")
+    return action == :save ? save_file(directory; filterlist="jld2") :
+        pick_file(directory; filterlist="jld2")
 end
 
 function choose_session_path(dialog, action, suggested)

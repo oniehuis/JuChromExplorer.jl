@@ -28,6 +28,94 @@ function file_shortcut!(session, key; shift=false)
     waitsessionio!(session)
 end
 
+@testset "Native session dialog routing and path suggestions" begin
+    mktempdir() do root
+        directory = mkdir(joinpath(root, "Sessions α with spaces"))
+        filename = "Experiment 'α' \"quoted\" \$name.jld2"
+        chosen = joinpath(directory, filename)
+        calls = Any[]
+        response = Ref(chosen)
+        read_command(command, type) = begin
+            push!(calls, (; command=collect(command), type))
+            response[] * "\n"
+        end
+        save_file(path; filterlist) = (push!(calls, (; action=:save, path, filterlist)); response[])
+        pick_file(path; filterlist) = (push!(calls, (; action=:open, path, filterlist)); response[])
+        for isapple in (true, false)
+            backend = (; isapple, read_command, save_file, pick_file)
+            empty!(calls)
+            @test_throws ArgumentError JuChromExplorer.native_session_dialog(:invalid, directory; backend...)
+            @test isempty(calls)
+            for action in (:save, :open), (suggested, folder, name) in (
+                (directory, directory, "Session.jld2"),
+                (chosen, directory, filename),
+                (joinpath(root, "missing", filename), homedir(), filename))
+                empty!(calls)
+                @test JuChromExplorer.native_session_dialog(action, suggested; backend...) == chosen
+                if isapple
+                    @test calls == [(; command=["osascript", "-e", JuChromExplorer.MACOS_SESSION_DIALOG,
+                        String(action), folder, name], type=String)]
+                else
+                    @test calls == [(; action, path=folder, filterlist="jld2")]
+                end
+            end
+            response[] = ""
+            for action in (:save, :open)
+                @test JuChromExplorer.native_session_dialog(action, directory; backend...) == ""
+            end
+            response[] = chosen
+            failure = ErrorException("Simulated native dialog failure")
+            fail(args...; kwargs...) = throw(failure)
+            for action in (:save, :open)
+                @test_throws failure JuChromExplorer.native_session_dialog(action, directory;
+                    isapple, read_command=fail, save_file=fail, pick_file=fail)
+            end
+        end
+    end
+end
+
+@testset "Session file detection rejects corrupt and unrelated files" begin
+    mktempdir() do directory
+        @test !JuChromExplorer.is_session_file(joinpath(directory, "missing.jld2"))
+        @test !JuChromExplorer.is_session_file(mkdir(joinpath(directory, "folder.jld2")))
+        path = joinpath(directory, "session.JLD2")
+        JLD2.jldsave(path; format=JuChromExplorer.SESSION_FORMAT)
+        @test JuChromExplorer.is_session_file(path)
+        ordinary = joinpath(directory, "session.txt")
+        cp(path, ordinary)
+        @test !JuChromExplorer.is_session_file(ordinary)
+        JLD2.jldsave(path; format="Unrelated format")
+        @test !JuChromExplorer.is_session_file(path)
+        JLD2.jldsave(path; values=[1, 2, 3])
+        @test !JuChromExplorer.is_session_file(path)
+        # These have the right extension but cannot be opened as JLD2 at all.
+        for content in ("", "This is not a JLD2 file.")
+            write(path, content)
+            # Empty files may produce JLD2's mmap-fallback warning.
+            @test_logs min_level=Logging.Error begin
+                @test !JuChromExplorer.is_session_file(path)
+            end
+        end
+    end
+end
+
+@testset "Session arrays unwrap nested observables and copy mutable values" begin
+    source = reshape([Observable((; samples=[i, i + 1], label=Observable("Run $i")))
+        for i in 1:4], 2, 2)
+    for array in (source, view(source, :, 1:1))
+        saved = JuChromExplorer.session_value(array)
+        @test axes(saved) == axes(array)
+        @test saved == [(; samples=value[].samples, label=value[].label[]) for value in array]
+        @test saved !== array
+        @test all(saved[i].samples !== array[i][].samples for i in eachindex(array))
+        saved[1].samples[1] = -1
+        @test array[1][].samples[1] == 1
+        array[1][].label[] = "Changed"
+        @test saved[1].label == "Run 1"
+        array[1][].label[] = "Run 1"
+    end
+end
+
 @testset "JLD2 sessions preserve data, selections, styles, and all views" begin
     mktempdir() do directory
         data = file_fixture()
@@ -179,11 +267,12 @@ end
             original_limits = target.axis.limits[]
             snapshot = JLD2.load(path, "session")
             bad = joinpath(directory, "bad.jld2")
-            # Exercise failures both before rebuilding and after displaying the
-            # replacement graph, so rollback must reconnect the original window.
+            # Exercise validation, construction before display, and restoration
+            # after display, including both ways of reconnecting the old scene.
             for broken in (
                 merge(snapshot, (; styles=merge(snapshot.styles,
                     (; tic=merge(snapshot.styles.tic, (; palette=(:invalid_color,))))))),
+                merge(snapshot, (; options=merge(snapshot.options, (; inactive_alpha=-1.0)))),
                 merge(snapshot, (; axis=merge(snapshot.axis,
                     (; attributes=merge(snapshot.axis.attributes, (; xscale=:invalid_scale)))))))
                 JLD2.jldsave(bad; format=JuChromExplorer.SESSION_FORMAT,
@@ -198,6 +287,10 @@ end
                 @test target.importer === importer
                 @test length(Makie.Observables.listeners(window.window_open)) == window_callbacks
                 @test_logs min_level=Logging.Error GLMakie.colorbuffer(window)
+                move_hover!(target, 0.5)
+                @test target.hovered_scan[] == 2
+                @test target.spectrum_scan[] == 2
+                events(target.axis).entered_window[] = false
             end
             @test_logs (:warn, r"Opening file with JLD2.MmapIO failed") begin
                 @test_throws Exception load_session!(target, joinpath(directory, "missing.jld2"))
@@ -238,6 +331,62 @@ end
         finally
             close(source.screen)
             close(target.screen)
+        end
+    end
+end
+
+@testset "Failed session restoration closes the new window and rethrows" begin
+    mktempdir() do directory
+        source = explore(file_fixture(); importer=nothing, screen=HIDDEN_SCREEN)
+        open_before = Set(filter(isopen, GLMakie.ALL_SCREENS))
+        try
+            snapshot = JuChromExplorer.session_snapshot(source)
+            # Restoration reaches the final help-visibility flag only after the
+            # new window and all saved plots have been constructed successfully.
+            broken = merge(snapshot, (; help_visible="invalid boolean"))
+            path = joinpath(directory, "broken.jld2")
+            JLD2.jldsave(path; format=JuChromExplorer.SESSION_FORMAT,
+                format_version=JuChromExplorer.SESSION_FORMAT_VERSION, session=broken)
+            @test_throws TypeError load_session(path; importer=nothing, screen=HIDDEN_SCREEN)
+            @test Set(filter(isopen, GLMakie.ALL_SCREENS)) == open_before
+            @test isopen(source.screen)
+            move_hover!(source, 0.5)
+            @test source.spectrum_scan[] == 2
+        finally
+            for window in setdiff(Set(filter(isopen, GLMakie.ALL_SCREENS)), open_before)
+                close(window)
+            end
+            close(source.screen)
+        end
+    end
+end
+
+@testset "Closing a window during a session dialog cancels the operation" begin
+    mktempdir() do directory
+        for action in (:save, :open)
+            path = joinpath(directory, "$(action).jld2")
+            calls = Tuple{Symbol,String}[]
+            session = explore(file_fixture(); importer=nothing, screen=HIDDEN_SCREEN)
+            session.storage.directory = directory
+            session.storage.dialog = (requested, suggestion) -> begin
+                push!(calls, (requested, suggestion))
+                close(session.screen)
+                path
+            end
+            original_figure, original_runs = session.figure, session.runs
+            try
+                result = action == :save ? save_session(session) : load_session!(session)
+                @test isnothing(result)
+                suggested = action == :save ? joinpath(directory, "Session.jld2") : directory
+                @test calls == [(action, suggested)]
+                @test !isopen(session.screen)
+                @test session.figure === original_figure
+                @test session.runs === original_runs
+                @test isnothing(session.session_path)
+                @test isempty(readdir(directory))
+            finally
+                close(session.screen)
+            end
         end
     end
 end
