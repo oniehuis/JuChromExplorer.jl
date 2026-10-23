@@ -5,7 +5,7 @@ function help_snapshot(session)
         scan=session.spectrum_scan[], hovered=session.hovered_scan[], ion=session.hovered_ion[],
         pins=copy(session.pinned_ions[]), added=copy(session.selected_scans[]),
         subtracted=copy(session.subtracted_scans[]), active=session.active_index,
-        runs=length(session.runs), spectrum=copy(session.spectrum_trace.intensities[]))
+        runs=length(session.runs), weights=[run.weight for run in session.runs], spectrum=copy(session.spectrum_trace.intensities[]))
 end
 
 function check_help_bounds(session)

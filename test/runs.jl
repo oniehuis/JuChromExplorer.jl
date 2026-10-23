@@ -126,7 +126,7 @@ end
         @test session.runs[1].trace.depth_shift[] < session.runs[2].trace.depth_shift[]
         @test last.(session.runs[1].trace[1][]) ≈ [11, 22, 33]
         @test last.(session.runs[2].trace[1][]) ≈ [24, 48, 72]
-        @test session.axis.finallimits[].origin[2] + session.axis.finallimits[].widths[2] >= 72
+        @test maximum(session.axis.finallimits[])[2] ≈ 33 * 1.05
         limits!(session.axis, 1, 3, 0, 80)
         mark_scan!(session, Keyboard.a, 0.01)
         mark_scan!(session, Keyboard.s, 0.99)

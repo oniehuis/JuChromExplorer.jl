@@ -55,7 +55,7 @@ mass spectra can still preview its own ions when the selected targets are incomp
 
 ## Matching channels and scaling
 
-XICs use the original intensities in the upper axis's display unit, including
+XICs are extracted in the upper axis's display unit from original intensities, including
 negative values. The spectrum's 100% normalization does not affect extraction.
 Only **exact m/z matches** are used, with no implicit binning or tolerance; missing
 matches contribute zero. Bin your data first when appropriate. Compatible m/z
@@ -65,17 +65,19 @@ FID have no XIC and are hidden until the TIC view returns.
 
 Targets are shared across the session. Newly added or imported runs participate
 when their data are compatible. Removing the last run clears the targets.
-In the single-ion run comparison or an unpinned preview, automatic Y limits fit
-that ion across all compatible loaded runs, even with `overlay=false`. In multi-ion
-mode, including one selected plus one hovered ion, only the focused run's selected
-and temporarily hovered XICs determine the automatic range. The lower
-bound is the minimum, including negative values; the upper bound includes 5%
-headroom. Missing ions contribute zero. Zero-only channels use 0–1; other constant
-channels receive headroom. Logarithmic axes use positive values and log-space headroom.
+Automatic Y limits fit the focused run's selected and temporarily hovered XICs,
+over all retentions. Linear axes include zero, any negative values, and 5% upper
+headroom. Zero-only channels use 0–1. Logarithmic axes use positive values and
+log-space headroom. Other samples may extend beyond that range.
 
-Manual Y adjustments, rectangle zoom, and `ylims!` override fitting while the
-selection remains active, including when switching runs or changing between one
-and multiple ions. **Left Shift + R** in the upper panel resumes automatic fitting,
+TICs and XICs share each sample's persistent display weight. **Left Shift + ↑/↓**
+adjusts the other samples relative to the fixed focus; negative values scale about
+zero. **Left Shift + W** restores all weights to 1. See
+[Relative intensity scaling](interaction.md#Relative-intensity-scaling).
+
+Rectangle zoom and `ylims!` override fitting while the
+selection remains active, including when changing between one and multiple ions. Changing focus rebases
+manual limits and zoom history to preserve the displayed arrangement. **Left Shift + R** in the upper panel resumes automatic fitting,
 including the lower bound. `ylims!(session.axis, nothing, nothing)` does the same;
 partial limits such as `ylims!(session.axis, 0, nothing)` fix one bound while fitting
 the other. Automatic limits adapt to selection, navigation, and added/removed runs.
@@ -87,7 +89,8 @@ scaling**. The current retention view and its zoom history survive these
 transitions. Double-click can continue through zooms made before selecting ions,
 all the way back to the original retention range. When undoing a zoom from another
 mode or an earlier cleared selection, the current signal's Y scale is retained;
-within the same mode/selection, both saved X and Y limits are restored. Undoing an
+within the same mode/selection, both saved X and Y views are restored. Returning
+to an automatic full view fits the current focused signal. Weights always persist. Undoing an
 earlier TIC zoom also updates the TIC Y view that will return when ions are cleared.
 The middle spectrum always comes from the original data, including when hovering over XICs.
 Ordinary left-drag and double-click zoom remain available; X-modified gestures

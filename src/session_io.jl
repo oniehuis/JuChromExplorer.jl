@@ -12,7 +12,7 @@ function snapshot_axis(ax, zoom=nothing)
     attributes = (; (key => session_value(getproperty(ax, key))
         for key in Makie.attribute_names(Axis) if key != :limits && hasproperty(ax, key))...)
     history = isnothing(zoom) ? [] :
-        [(; limits=rectangle_values(view.limits), view.context) for view in zoom.history]
+        [(; limits=rectangle_values(view.limits), view.context, view.y_request) for view in zoom.history]
     return (; attributes, requested=session_value(ax.limits[]),
         displayed=rectangle_values(ax.targetlimits[]), history)
 end
@@ -42,7 +42,7 @@ end
 function session_snapshot(session)
     scale = session.xic.scaling
     runs = [(; run.id, run.name, data=run.series, color=session_value(run.color),
-        original_color=session_value(run.original_color), run.alpha,
+        original_color=session_value(run.original_color), run.alpha, run.log_weight,
         run.inspected_scan, trace_style=snapshot_plot(run.trace, SESSION_LINE_ATTRIBUTES),
         panels=snapshot_panels(run.panels)) for run in session.runs]
     return (; runs, active=session.active_index, session.next_id, session.next_palette_index,
@@ -52,6 +52,8 @@ function session_snapshot(session)
             (; size=Tuple(Makie.viewport(session.figure.scene)[].widths),
                 backgroundcolor=session_value(session.figure.scene.backgroundcolor[]))),
         window_title=session.storage.title, axis=snapshot_axis(session.axis, session.zoom),
+        relative_scaling=(; tickcolor=session_value(session.scaling.indicating ?
+            session.scaling.tickcolor : session.axis.yticklabelcolor[])),
         empty_panels=isempty(runs) ? map(snapshot_axis, session.empty_panels) : nothing,
         xic=(; pinned=[(; ion.mz, ion.unit) for ion in session.xic.pinned[]],
             hovered=isnothing(session.xic.hovered[]) ? nothing :
@@ -126,8 +128,8 @@ function read_session(path)
         haskey(file, "format") && file["format"] == SESSION_FORMAT ||
             throw(ArgumentError("This is not a JuChromExplorer session file."))
         version = get(file, "format_version", nothing)
-        version == SESSION_FORMAT_VERSION || throw(ArgumentError(
-            "Unsupported session format version $version; this explorer reads version $SESSION_FORMAT_VERSION."))
+        version in (1, 2, SESSION_FORMAT_VERSION) || throw(ArgumentError(
+            "Unsupported session format version $version; this explorer reads versions 1, 2 and $SESSION_FORMAT_VERSION."))
         haskey(file, "session") || throw(ArgumentError("The session payload is missing."))
         snapshot = file["session"]
         validate_session_snapshot(snapshot)
@@ -135,9 +137,21 @@ function read_session(path)
     end
 end
 
+function saved_log_weights(runs)
+    weights = map(runs) do run
+        # Version 1 had no weights; version 2 stored positive multipliers.
+        value = haskey(run, :log_weight) ? run.log_weight : log(validate_weight(get(run, :weight, 1.0)))
+        value isa Real && isfinite(value) && isfinite(Float64(value)) ||
+            throw(ArgumentError("A sample log weight must be a finite Float64."))
+        return Float64(value)
+    end
+    return centered_log_weights(weights)
+end
+
 function validate_session_snapshot(snapshot)
     snapshot isa NamedTuple || throw(ArgumentError("Invalid session payload."))
     runs = snapshot.runs
+    saved_log_weights(runs)
     snapshot.active in (isempty(runs) ? (0:0) : (1:length(runs))) ||
         throw(ArgumentError("Invalid active run in session file."))
     ids = [run.id for run in runs]
@@ -182,7 +196,9 @@ function restore_axis!(ax, zoom, saved)
     ax.targetlimits[] = Rect2d(saved.displayed...)
     if !isnothing(zoom)
         empty!(zoom.history)
-        append!(zoom.history, [ZoomView(Rect2d(view.limits...), view.context) for view in saved.history])
+        append!(zoom.history, [ZoomView(Rect2d(view.limits...), view.context,
+            get(view, :y_request, (view.limits[2], view.limits[2] + view.limits[4])))
+            for view in saved.history])
     end
     return nothing
 end
@@ -350,11 +366,13 @@ function restore_session!(session, snapshot, compression)
     session.help.paused[] = true
     with_xic_updates_suspended(session) do
         session.options = merge(snapshot.options, (; session_compression=compression))
-        for saved in snapshot.runs
+        log_weights = saved_log_weights(snapshot.runs)
+        for (saved, log_weight) in zip(snapshot.runs, log_weights)
             coordinates = validate_run(saved.data, saved.name, session.retentionunit, session.intensityunit)
             run = append_run!(session, saved.name, saved.data, coordinates, saved.color)
             # Older sessions predate color overrides; their saved color is the reset value.
             run.original_color = session_value(get(saved, :original_color, saved.color))
+            run.log_weight = log_weight
             run.id, run.alpha, run.inspected_scan = saved.id, saved.alpha, saved.inspected_scan
             restore_plot!(run.trace, saved.trace_style)
             if !isnothing(saved.panels)
@@ -373,7 +391,10 @@ function restore_session!(session, snapshot, compression)
         session.xic.next_color_index = xic.next_color_index
         session.xic.pinned[] = [IonTarget(ion.mz, ion.unit) for ion in xic.pinned]
         session.xic.hovered[] = isnothing(xic.hovered) ? nothing : IonTarget(xic.hovered.mz, xic.hovered.unit)
-        session.xic.scaling = XICScaling(values(xic.scaling)...)
+        scale = xic.scaling
+        tic_y = !haskey(snapshot, :relative_scaling) && !scale.active ?
+            last(Makie.convert_limit_attribute(snapshot.axis.requested)) : scale.tic_y
+        session.xic.scaling = XICScaling(scale.active, scale.manual_y, tic_y, scale.generation)
     end
     refresh_xics!(session)
     with_xic_updates_suspended(session) do
@@ -389,6 +410,13 @@ function restore_session!(session, snapshot, compression)
         end
         restore_axis!(session.axis, session.zoom, snapshot.axis)
     end
+    if haskey(snapshot, :relative_scaling)
+        session.scaling.tickcolor = session_value(snapshot.relative_scaling.tickcolor)
+        # The saved axis may already be red. Restore the user's underlying color
+        # rather than treating that managed indicator as their style preference.
+        session.scaling.indicating = true
+    end
+    update_scaling_indicator!(session)
     resume_help_interactions!(session)
     update_readout!(session)
     snapshot.help_visible && set_help_visible!(session, true)

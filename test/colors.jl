@@ -1,5 +1,70 @@
 tic_colors(session) = [plot_color(run.trace.color) for run in session.runs]
 
+@testset "Automatic colors continue forward, reuse free colors on wrap and then cycle" begin
+    series = ChromScanSeries([ChromScan(1.0, 1.0), ChromScan(2.0, 3.0)])
+    palette = Makie.to_color.([:navy, :orange, :green, :purple])
+    session = explore(fill(series, 3); tic=(; palette), screen=HIDDEN_SCREEN)
+    restored = nothing
+    try
+        remove_run!(session, 2)
+        add_run!(session, series)
+        @test tic_colors(session) == palette[[1, 3, 4]] # do not reuse color 2 early
+        @test session.next_palette_index == 1
+        mktempdir() do directory
+            path = save_session(session, joinpath(directory, "palette-wrap.jld2"))
+            restored = load_session(path; screen=HIDDEN_SCREEN)
+            for window in (session, restored)
+                add_run!(window, series)
+                @test tic_colors(window) == palette[[1, 3, 4, 2]]
+                @test window.next_palette_index == 3
+                add_run!(window, series)
+                add_run!(window, series)
+                @test tic_colors(window) == palette[[1, 3, 4, 2, 3, 4]]
+                # A deleted duplicate does not free a color still used by another run.
+                remove_run!(window, 2)
+                add_run!(window, series)
+                @test window.runs[end].color == palette[1]
+                # Deleting every run retains the next position, now color 2.
+                while !isempty(window.runs)
+                    remove_run!(window)
+                end
+                add_run!(window, series)
+                @test only(window.runs).color == palette[2]
+            end
+        end
+    finally
+        isnothing(restored) || close(restored.screen)
+        close(session.screen)
+    end
+end
+
+@testset "Unused colors account for explicit colors, overrides and repeated palette entries" begin
+    series = ChromScanSeries([ChromScan(1.0, 1.0), ChromScan(2.0, 3.0)])
+    palette = Makie.to_color.([:navy, :orange, :green, :purple])
+    session = explore((data=series, color=("#000080", 0.4)); tic=(; palette),
+        overlay=false, screen=HIDDEN_SCREEN)
+    try
+        @test session.next_palette_index == 1 # explicit colors do not advance it
+        add_run!(session, series)
+        @test session.runs[end].color == palette[2] # navy is used, despite different alpha
+        @test !session.runs[1].trace.visible[]
+        @test JuChromExplorer.set_run_palette_color!(session, 3)
+        @test session.next_palette_index == 3
+        add_run!(session, series)
+        @test session.runs[end].color == palette[4] # current green, not original orange, is occupied
+        add_run!(session, series)
+        @test session.runs[end].color == palette[2]
+    finally
+        close(session.screen)
+    end
+    session = explore(fill(series, 3); tic=(; palette=[:navy, :navy, :orange]), screen=HIDDEN_SCREEN)
+    try
+        @test tic_colors(session) == Makie.to_color.([:navy, :orange, :navy])
+    finally
+        close(session.screen)
+    end
+end
+
 @testset "TIC palettes and per-run colors" begin
     series = run_fixture()
     palette = [:navy, :darkorange]

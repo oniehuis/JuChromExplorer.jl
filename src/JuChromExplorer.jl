@@ -9,6 +9,7 @@ import NativeFileDialog
 export ExplorerSession, explore, clearselection!, activate_run!, next_run!, add_run!, remove_run!
 export default_importer, loadpaths!, waitimports!
 export clearions!
+export set_run_weight!, reset_weights!
 export save_session, load_session, load_session!, waitsessionio!
 
 include("styles.jl")
@@ -18,6 +19,7 @@ include("axislimits.jl")
 include("selection.jl")
 include("spectrum.jl")
 include("xic.jl")
+include("scaling.jl")
 include("importers.jl")
 include("readout.jl")
 include("help.jl")

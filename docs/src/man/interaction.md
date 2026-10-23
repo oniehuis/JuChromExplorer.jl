@@ -19,8 +19,10 @@ under the mouse; scan and ion selection require mass-spectral data.
 | Window | **Cmd/Ctrl+O** | Restore a session in the current window |
 | Any of the three panels | **Left-drag** | Zoom into a rectangle |
 | Any of the three panels | **Double-click** | Undo one zoom step |
-| Any of the three panels | **Left Shift + ↑ / ↓** | Make peaks taller / shorter |
-| Any of the three panels | **Left Shift + R** | Reset Y scaling |
+| Upper chromatogram | **Left Shift + ↑ / ↓** | Reduce / increase other samples relative to the focus |
+| Upper chromatogram | **Left Shift + W** | Restore all sample weights to 1 |
+| Spectrum panels | **Left Shift + ↑ / ↓** | Make peaks taller / shorter |
+| Any of the three panels | **Left Shift + R** | Fit the focused chromatogram, or reset the spectrum upper limit; retain weights |
 | During a drag | **Esc** | Cancel zoom, or stop scan brushing |
 | Upper chromatogram | **Hover** | Inspect the nearest scan |
 | Upper chromatogram | **A / S + left-click or drag** | Mark scans for addition / subtraction; repeat to erase |
@@ -125,45 +127,84 @@ in all three panels. The explicit drag zoom and double-click history remain avai
 Zooming does not change the scan selection. Linked signals with two Y axes remain
 a subsequent implementation step.
 
-## Upper Y limits
+## Relative intensity scaling
 
-Move the pointer into the TIC, live spectrum, or result spectrum panel:
+The upper panel's Y axis always gives the focused sample's actual intensity.
+Every sample has a positive weight, initially 1. Its displayed TIC and XIC values
+are `actual_intensity * sample_weight / focus_weight`. Data, cached XIC values,
+readouts, and spectrum calculations retain their original intensities.
 
-- **Left Shift + ↑** makes peaks taller: divide the displayed Y range by 1.1,
-  lowering its upper limit.
-- **Left Shift + ↓** makes peaks shorter: multiply that range by 1.1,
-  raising its upper limit.
-- **Left Shift + R** resets only the upper limit: automatic fitting across all
-  loaded runs for the TIC, or the configured initial upper limit for a spectrum
-  (normally 110%, including space for labels above the 100% base peak).
+Weights are stored as logarithms with mean zero (positive weights have geometric
+mean 1). After each adjustment or removal, all weights are normalized together,
+preserving their ratios and the current view. This prevents an arbitrarily large
+common multiplier from accumulating and requires no permanent reference sample.
+Removing a sample preserves the remaining ratios. A new sample starts at weight 1,
+the current geometric mean. With only one sample, the normalized weight stays 1.
 
-While XICs are shown in the upper panel, Left Shift + R instead resumes the XIC
-range described in [Ion chromatograms](xic.md), including its minimum. The spectrum-panel controls are unchanged.
+With the pointer inside the upper panel:
 
-Both spectrum panels stop at their **configured default upper limit**, normally
-110%, including held-key repeat and reset. A step that would exceed that limit
-lands exactly on it. Custom `spectrum_axis` and `result_axis` upper limits define
-each panel's own ceiling. The TIC has no corresponding upper cap.
+- **Left Shift + ↑** increases the focused sample's weight relative to the others by 1.1. Other
+  samples' displayed intensities are divided by 1.1.
+- **Left Shift + ↓** reverses that adjustment, multiplying the other samples'
+  displayed intensities by 1.1.
+- **Left Shift + R** fits the focused signal's full Y range, retaining weights
+  and the current retention view.
+- **Left Shift + W** restores all weights to 1, retaining the current view.
 
-Holding an arrow repeats the adjustment. The lower Y limit and X limits stay fixed.
-The TIC has no lower padding by default: its automatic lower limit is the minimum
-plotted intensity across the loaded runs, including negative values. Upper-limit
-adjustments and resets keep that baseline fixed. Explicit axis limits and rectangle
-zoom can still set a different lower bound. Spectrum scaling is unchanged.
-On logarithmic axes, the 10% steps apply in logarithmic coordinates. If a lower
-limit set by dragging or at the REPL is already at or above the reset upper limit,
-reset leaves the view unchanged to avoid invalid limits.
+Holding an arrow repeats the adjustment. The focused trace and both axis limits
+stay fixed while adjusting weights. Scaling is multiplication about zero: reducing
+a negative intensity brings it closer to zero without changing its sign.
+Red Y tick labels and “overlays scaled” in the title indicate that a visible
+non-focus trace uses a multiplier different from 1. The original tick color returns
+when all visible traces use the axis scale. Hidden overlays do not trigger the indicator.
+Right Shift is reserved for a future right Y axis and currently has no effect.
 
-Manual adjustments persist when adding runs; resetting the TIC upper bound resumes
-automatic fitting for future additions. Switching runs keeps the shared TIC scale;
-each run retains its own spectrum limits. New spectrum panels start with their
-configured defaults. Scan selections and drag-zoom history are unaffected; a
-double-click restores the view saved before the previous drag, retaining the current
-Y scale when crossing a TIC/XIC mode or cleared-selection boundary.
+Weights apply over the entire chromatogram and survive zoom, focus changes,
+TIC/XIC transitions, and saved sessions. Zoom undo never restores older weights.
+While manually zoomed, changing focus converts both Y limits and the saved zoom
+views to the new sample's intensity coordinates, preserving the displayed trace
+positions. In an automatic full view, changing focus fits the newly focused sample;
+trace positions may change together, with their relative scaling preserved.
+Returning to a saved automatic view recomputes its range from the current focus.
+Zooms from another TIC/XIC context restore retention only, except that the final
+return to an automatic full view also fits the current signal.
 
-**Right Shift** is reserved for the upper panel's future secondary Y axis and has
-no effect currently. These shortcuts do nothing outside the plots, in an empty or
-unfocused window, or while a mouse button or an additional modifier is held.
+Automatic linear Y limits include zero and all focused-sample values over the
+entire retention range. By default, `L = min(0, minimum)` and `H = max(0, maximum)`
+give limits `(L, H + 0.05 * (H - L))`. Negative signals remain visible, with no
+lower padding. Zero-only signals use 0–1. In XIC mode, the range includes all
+currently displayed ions of the focused sample. Larger non-focus overlays may be
+clipped. Logarithmic Y axes use positive values and padding in logarithmic coordinates.
+Explicit `ylims!` and rectangle zoom override automatic fitting; partial limits
+can fix one bound while fitting the other.
+
+From Julia, use [`set_run_weight!`](@ref) and [`reset_weights!`](@ref):
+
+```julia
+set_run_weight!(session, 2.0)          # assign before normalizing all weights
+set_run_weight!(session, 0.5; index=2)
+reset_weights!(session)
+```
+
+`set_run_weight!` assigns a value relative to the other current normalized weights,
+then normalizes all of them. For example, setting one of two equal weights to 2
+produces weights `sqrt(2)` and `1/sqrt(2)`, retaining the requested ratio of 2.
+To multiply an existing weight by a factor, pass `session.runs[i].weight * factor`
+with `index=i`. Adjustments that would make a relative display factor overflow or
+underflow are rejected; keyboard adjustments stop at that limit.
+
+## Spectrum Y limits
+
+In either spectrum panel, **Left Shift + ↑ / ↓** retains its previous behavior:
+make peaks taller / shorter by dividing / multiplying the displayed Y range by 1.1.
+The lower bound and retention/mass range stay fixed. **Left Shift + R** restores
+the configured upper limit (normally 110%, including label headroom above the
+100% base peak). Zoom-out stops at that configured default. A reset that would
+put the upper bound at or below the current lower bound leaves the view unchanged.
+
+These shortcuts do nothing outside the plots, in an empty or unfocused window,
+or while a mouse button or an additional modifier is held. Each run retains its
+own spectrum limits and zoom histories.
 
 ## Keyboard and mouse help
 

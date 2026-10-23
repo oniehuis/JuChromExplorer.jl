@@ -161,7 +161,7 @@ end
             @test session.options.session_compression == :none
             JLD2.jldopen(path) do file
                 @test file["format"] == JuChromExplorer.SESSION_FORMAT
-                @test file["format_version"] == 1
+                @test file["format_version"] == 3
                 @test file["versions"].juchrom == string(pkgversion(JuChrom))
                 @test file["session"].options.session_compression == :none
             end
@@ -413,7 +413,7 @@ end
                         @test count(block -> block isa Axis && block.scene.visible[], restored.figure.content) == 3
                     else
                         @test typeof(restored.series) == typeof(data)
-                        @test last(Makie.convert_limit_attribute(restored.axis.limits[])) == (0,nothing)
+                        @test restored.xic.scaling.tic_y == (0,nothing)
                     end
                     @test save_session(restored; compression=:none) == path
                     @test restored.options.session_compression == :none

@@ -2,11 +2,15 @@
 struct ZoomView
     limits::Rect2d
     context::Int
+    y_request::Any
 end
+ZoomView(limits, context) = ZoomView(limits, context,
+    (minimum(limits)[2], maximum(limits)[2]))
 
 mutable struct DragZoom{V, H}
     history::Vector{ZoomView}
     context::Function
+    snapshot::Function
     restore::Function
     active::Observable{Bool}
     bounds::Observable{Rect2d}
@@ -79,7 +83,7 @@ function Makie.process_interaction(zoom::DragZoom, event::Makie.MouseEvent, ax::
             bounds = zoom.bounds[]
             valid = zoom.active[] && all(drag_extent(zoom, event, ax) .>= 4) &&
                 all(bounds.widths .> 0) && bounds != zoom.previous_limits
-            previous = ZoomView(zoom.previous_limits, zoom.context())
+            previous = zoom.snapshot(zoom.previous_limits, zoom.context())
             cancel_drag!(zoom)
             if valid
                 apply_zoom_limits!(ax, bounds)
@@ -117,7 +121,7 @@ function attach_zoom!(ax::Axis; style=DEFAULT_STYLES.zoom)
         visible=active, inspectable=false, xautolimits=false, yautolimits=false))
     vertical = vlines!(ax, xs; attributes...)
     horizontal = hlines!(ax, ys; attributes...)
-    zoom = DragZoom(ZoomView[], () -> 0,
+    zoom = DragZoom(ZoomView[], () -> 0, (bounds, context) -> ZoomView(bounds, context),
         (axis, view) -> apply_zoom_limits!(axis, view.limits),
         active, bounds, nothing, Point2f(0), ax.finallimits[], vertical, horizontal)
 

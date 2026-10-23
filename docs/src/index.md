@@ -30,7 +30,8 @@ Then load the explorer with `using JuChromExplorer`.
   select extracted-ion chromatograms (XICs) from the spectrum.
 - Select discontinuous scan groups and display their mean spectrum difference,
   with negative results floored to zero.
-- Zoom into all three panels, undo zoom steps, and adjust upper Y limits.
+- Zoom into all three panels, undo zoom steps, and compare samples with persistent
+  relative intensity weights while the Y axis follows the focused sample.
 - Open an empty window and add runs through Julia or an optional user-defined
   drag-and-drop importer.
 - Customize colors, palettes, and plot appearance through keywords or Makie themes.

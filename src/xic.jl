@@ -15,11 +15,9 @@ mutable struct XICScaling
     active::Bool
     manual_y::Any
     tic_y::Any
-    tic_bounds::Any
-    tic_run_ids::Vector{Int}
     generation::Int
 end
-XICScaling() = XICScaling(false, nothing, nothing, nothing, Int[], 0)
+XICScaling() = XICScaling(false, nothing, nothing, 0)
 
 mutable struct XICState
     hovered::Observable{Union{Nothing, IonTarget}}
@@ -45,70 +43,83 @@ function with_xic_updates_suspended(f, session)
     end
 end
 
-function xic_data_limits(session)
+function intensity_data_limits(session, values)
     scale = session.axis.yscale[]
     lo, hi = Inf, -Inf
-    for run in session.runs
-        for (trace, available) in ((run.xic.pinned_trace, !isempty(run.xic.pinned_mzs)),
-            (run.xic.preview_trace, !isnothing(run.xic.preview_mz)))
-            available || continue
-            for point in trace[1][]
-                y = point[2]
-                isfinite(y) || continue
-                transformed = try
-                    scale(y)
-                catch error
-                    error isa DomainError || rethrow()
-                    continue
-                end
-                isfinite(transformed) || continue
-                lo, hi = min(lo, y), max(hi, y)
-            end
+    for y in values
+        isfinite(y) || continue
+        transformed = try
+            scale(y)
+        catch error
+            error isa DomainError || rethrow()
+            continue
         end
+        isfinite(transformed) || continue
+        lo, hi = min(lo, y), max(hi, y)
     end
     isfinite(lo) || return nothing
+    # A linear full view includes zero and negative signals. Logarithmic axes
+    # retain their positive-only domain, with padding in transformed coordinates.
+    if scale === identity
+        lo, hi = min(0.0, lo), max(0.0, hi)
+    end
     lower, upper = scale(lo), scale(hi)
-    # Five percent of the signal range, without padding below its minimum.
-    # A constant/zero channel still needs a nondegenerate axis.
-    padding = upper > lower ? 0.05 * (upper - lower) :
+    margin = session.axis.yautolimitmargin[]
+    span = upper - lower
+    padding = span > 0 ? margin[2] * span :
         iszero(upper) ? (scale === identity ? 1.0 : 0.05) : 0.05 * abs(upper)
     inverse = Makie.inverse_transform(scale)
     isnothing(inverse) && return nothing
+    bottom = inverse(lower - margin[1] * span)
     padded = inverse(upper + padding)
-    return isfinite(padded) && padded > lo ? (lo, padded) : nothing
+    return isfinite(bottom) && isfinite(padded) && padded > bottom ? (bottom, padded) : nothing
+end
+
+function xic_data_limits(session)
+    run = active_run(session)
+    (isnothing(run) || !has_spectra(run.series)) && return nothing
+    values = (point[2] for (trace, available) in
+        ((run.xic.pinned_trace, !isempty(run.xic.pinned_mzs)),
+         (run.xic.preview_trace, !isnothing(run.xic.preview_mz)))
+        if available for point in trace[1][])
+    return intensity_data_limits(session, values)
 end
 
 chromatogram_zoom_context(session) = session.xic.scaling.active ? session.xic.scaling.generation : 0
+chromatogram_y_request(session) = session.xic.scaling.active ?
+    session.xic.scaling.manual_y : session.xic.scaling.tic_y
+
+function set_chromatogram_y_request!(session, ys)
+    state = session.xic.scaling
+    chosen = isnothing(ys) || all(isnothing, ys) ? nothing : ys
+    state.active ? (state.manual_y = chosen) : (state.tic_y = chosen)
+    return nothing
+end
 
 function restore_chromatogram_zoom!(session, view)
     ax, state = session.axis, session.xic.scaling
-    if state.active && view.context == 0
-        # Consuming an earlier TIC zoom also moves its saved Y view back. Clearing
-        # the ions afterwards must not resurrect the TIC magnification we undid.
-        ys = (minimum(view.limits)[2], maximum(view.limits)[2])
-        state.tic_y = state.tic_bounds = ys
-        state.tic_run_ids = [run.id for run in session.runs]
-    end
-    if view.context == chromatogram_zoom_context(session)
-        apply_zoom_limits!(ax, view.limits)
-    else
-        # Retention history is continuous across TIC/XIC transitions. Intensity
-        # limits from another signal or an ended selection do not apply here.
+    with_xic_updates_suspended(session) do
+        if state.active && view.context == 0
+            state.tic_y = view.y_request
+        end
+        if view.context == chromatogram_zoom_context(session)
+            set_chromatogram_y_request!(session, view.y_request)
+        elseif length(session.zoom.history) == 1 && isnothing(view.y_request)
+            # The final return to an automatic full view fits the current signal,
+            # including when retention history crosses a TIC/XIC boundary.
+            set_chromatogram_y_request!(session, nothing)
+        end
         xs = (minimum(view.limits)[1], maximum(view.limits)[1])
         xlims!(ax, ax.xreversed[] ? reverse(xs) : xs)
     end
+    refresh_xics!(session)
     return nothing
 end
 
 function apply_xic_scaling!(session)
     state, ax = session.xic.scaling, session.axis
     active = xic_active(session)
-    xs, ys = Makie.convert_limit_attribute(ax.limits[])
     if active && !state.active
-        state.tic_y = ys
-        bounds = ax.targetlimits[]
-        state.tic_bounds = (minimum(bounds)[2], maximum(bounds)[2])
-        state.tic_run_ids = [run.id for run in session.runs]
         state.generation += 1
         state.active = true
     elseif !active && state.active
@@ -116,30 +127,21 @@ function apply_xic_scaling!(session)
         # A new generation prevents restoring this selection's old Y limits.
         state.manual_y = nothing
         state.active = false
-        # Keep the current retention view, but restore the TIC's original fixed
-        # or automatic Y specification. New runs still participate in auto fitting.
-        with_all_tics_visible(session) do
-            ax.limits[] = (xs, state.tic_y)
-        end
-        if state.tic_run_ids == [run.id for run in session.runs]
-            # A previously displayed automatic view may differ from a fresh
-            # Makie fit (e.g. active-only mode). Restore it exactly when the
-            # collection is unchanged, while retaining automatic limit settings.
-            bounds = ax.targetlimits[]
-            lo, hi = state.tic_bounds
-            ax.targetlimits[] = Rect2d(minimum(bounds)[1], lo, bounds.widths[1], hi - lo)
-        end
-        return nothing
     end
-    active || return nothing
-    automatic = xic_data_limits(session)
-    isnothing(automatic) && return nothing
-    chosen = isnothing(state.manual_y) ? automatic :
-        map((manual, fitted) -> isnothing(manual) ? fitted : manual, state.manual_y, automatic)
+    run = active_run(session)
+    isnothing(run) && return nothing
+    requested_y = chromatogram_y_request(session)
+    automatic = active ? xic_data_limits(session) : intensity_data_limits(session, run.tic_values)
+    if isnothing(automatic)
+        # A missing/incompatible ion or an all-nonpositive logarithmic channel
+        # has no automatic extent. Keep the view, while honoring fixed limits.
+        (isnothing(requested_y) || any(isnothing, requested_y)) && return nothing
+        automatic = requested_y
+    end
+    chosen = isnothing(requested_y) ? automatic :
+        map((manual, fitted) -> isnothing(manual) ? fitted : manual, requested_y, automatic)
     chosen[1] < chosen[2] || return nothing
-    # Freeze X at its current view when changing Y. Single-ion fitting includes
-    # all compatible runs; multi-ion fitting uses only the focused run. Both
-    # use entire traces, including retentions outside the current X view.
+    # Fit the focused signal over all retentions, leaving the current X view fixed.
     bounds = ax.targetlimits[]
     requested = ((minimum(bounds)[1], maximum(bounds)[1]), chosen)
     isequal(Makie.convert_limit_attribute(ax.limits[]), requested) || (ax.limits[] = requested)
@@ -147,7 +149,7 @@ function apply_xic_scaling!(session)
 end
 
 function reset_xic_scaling!(session)
-    session.xic.scaling.manual_y = nothing
+    set_chromatogram_y_request!(session, nothing)
     refresh_xics!(session)
     return true
 end
@@ -155,6 +157,8 @@ end
 function attach_xic_scaling!(session)
     ax, state = session.axis, session.xic
     session.zoom.context = () -> chromatogram_zoom_context(session)
+    session.zoom.snapshot = (bounds, context) ->
+        ZoomView(bounds, context, chromatogram_y_request(session))
     session.zoom.restore = (_, view) -> restore_chromatogram_zoom!(session, view)
     previous_y = Ref{Any}(last(Makie.convert_limit_attribute(ax.limits[])))
     pending_auto = Ref(false)
@@ -163,10 +167,10 @@ function attach_xic_scaling!(session)
     onany(ax.scene, ax.limits, ax.targetlimits; priority=10) do _...
         _, ys = Makie.convert_limit_attribute(ax.limits[])
         old_y, previous_y[] = previous_y[], ys
-        if state.scaling.active && !state.updating && !isequal(ys, old_y)
+        if !state.updating && !isequal(ys, old_y)
             # Covers the keyboard, rectangle zoom, and ordinary Makie ylims!.
             # Pure changes of X do not disable automatic XIC scaling.
-            state.scaling.manual_y = isnothing(ys) || all(isnothing, ys) ? nothing : ys
+            set_chromatogram_y_request!(session, ys)
             pending_auto[] = isnothing(ys) || any(isnothing, ys)
         end
         return nothing
@@ -193,8 +197,9 @@ mutable struct RunXIC
     pinned_colors::Vector{Makie.RGBAf}
     preview_mz::Any
     cache::Vector{Pair{Any, Vector{Float64}}}
+    display_factor::Float64
 end
-RunXIC() = RunXIC(nothing, nothing, Any[], Makie.RGBAf[], nothing, Pair{Any, Vector{Float64}}[])
+RunXIC() = RunXIC(nothing, nothing, Any[], Makie.RGBAf[], nothing, Pair{Any, Vector{Float64}}[], 1.0)
 
 function create_xic_traces!(session, data, color)
     state = RunXIC()
@@ -291,6 +296,7 @@ end
 function update_xic_data!(session, run)
     has_spectra(run.series) || return
     state, pins = run.xic, session.xic.pinned[]
+    factor = display_factor(session, run)
     multiple = multi_ion_mode(session)
     mzs, colors = Any[], Makie.RGBAf[]
     if !multiple || run === active_run(session)
@@ -301,7 +307,7 @@ function update_xic_data!(session, run)
             push!(colors, multiple ? ion_color(session, index) : Makie.RGBAf(Makie.to_color(run.color)))
         end
     end
-    if !isequal(mzs, state.pinned_mzs) || colors != state.pinned_colors
+    if !isequal(mzs, state.pinned_mzs) || colors != state.pinned_colors || factor != state.display_factor
         points, point_colors = Point2d[], Makie.RGBAf[]
         for (mz, color) in zip(mzs, colors)
             if !isempty(points)
@@ -309,7 +315,7 @@ function update_xic_data!(session, run)
                 push!(point_colors, color)
             end
             values = cached_xic!(run, mz, session.intensityunit)
-            append!(points, Point2d.(run.retentions, values))
+            append!(points, Point2d.(run.retentions, values .* factor))
             append!(point_colors, fill(color, length(values)))
         end
         # Keep one plot per run; update geometry/colors together when the number
@@ -323,13 +329,14 @@ function update_xic_data!(session, run)
         session.xic.hovered[] : nothing
     any(==(preview), pins) && (preview = nothing)
     mz = target_mz(preview, run.series)
-    if !isequal(mz, state.preview_mz)
+    if !isequal(mz, state.preview_mz) || factor != state.display_factor
         if !isnothing(mz)
             values = cached_xic!(run, mz, session.intensityunit)
-            state.preview_trace[1][] = Point2d.(run.retentions, values)
+            state.preview_trace[1][] = Point2d.(run.retentions, values .* factor)
         end
         state.preview_mz = mz
     end
+    state.display_factor = factor
     return nothing
 end
 
@@ -395,6 +402,7 @@ function refresh_xics!(session)
     state.updating = true
     try
         for run in session.runs
+            update_tic_data!(session, run)
             update_xic_data!(session, run)
         end
         update_run_appearance!(session)

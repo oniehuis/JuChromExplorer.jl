@@ -11,7 +11,8 @@ session = explore(["Sample A" => series_a, "Sample B" => series_b])
 ## Navigation and views
 
 **←/→** cycle through the collection. Unmodified **↑/↓** do nothing;
-**Left Shift + ↑/↓** adjusts the upper Y limit in the panel under the mouse.
+**Left Shift + ↑/↓** adjusts other samples relative to the focus in the upper
+panel, or the upper Y limit in a spectrum panel.
 The TIC title shows the active name, position, and mode, for example
 `Sample B · 2/2 · TIC`. A single-ion XIC uses `Sample B · 2/2 · XIC m/z 57 · all runs`
 for both hovering and selection, without a preview or pinned label.
@@ -23,8 +24,11 @@ All TICs are shown by default, with colors assigned from a cycling palette unles
 an explicit color is supplied for a run or the window. The active TIC is in front;
 other traces use 25% opacity. Change that
 multiplier with `inactive_alpha=0.15`, or open with `overlay=false` to show only the
-active TIC. TIC intensities are not normalized. All runs share the TIC axis limits
-and zoom history. Navigation preserves the current view.
+active TIC. The Y axis gives the active run's true intensities. Persistent sample
+weights control the other traces' relative display scale. All runs share the TIC
+axis and zoom history. Navigation preserves the displayed arrangement while
+manually zoomed, or fits the focused run in an automatic full view. See
+[Relative intensity scaling](interaction.md#Relative-intensity-scaling).
 
 Hover, A/S selection, and the two spectrum panels belong to the active run. Each
 run retains its own selections, last spectrum preview, spectrum axis settings,
@@ -63,8 +67,10 @@ input data are untouched. Removing the last run restores the three empty panels
 in a reusable window.
 After all runs are removed, new data can establish a new coordinate system unless
 units were explicitly specified at creation. `add_run!` preserves the current TIC
-retention view and manual or drag-zoomed Y limits. Automatic Y limits adapt to
-added data, including runs with higher peaks. Use `ylims!(session.axis, nothing,
+retention view and manual or drag-zoomed arrangement. A new run starts with
+weight 1, the current geometric mean. Removing a run normalizes the remaining
+weights without changing their ratios. Automatic Y limits fit the focused run, so adding a run with
+`activate=false` keeps the current range. Use `ylims!(session.axis, nothing,
 nothing)` to restore automatic Y limits after setting them manually. Adding the
 first run initializes the retention view.
 
@@ -74,7 +80,9 @@ first run initializes the retention view.
 empty. Existing fields such as `series`, `trace`, `selected_scans`, and
 `spectrum_axis` refer to the active run. Spectrum fields are `nothing` for empty
 windows or chromatographic data without mass spectra. Treat collection state as
-read-only and use the functions above to change it.
+read-only and use the functions above to change it. `session.runs[i].weight`
+exposes the normalized positive display weight, computed from the stored
+`log_weight`; use `set_run_weight!` to change it. No run is a permanent reference.
 
 Use **Left Shift + 1–9** to select a color from the window's fixed palette for the
 active run's left-axis TIC; unavailable slots do nothing. **Left Shift + 0** restores

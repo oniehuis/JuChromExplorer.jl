@@ -80,6 +80,8 @@ The file preserves:
 
 - All runs, their ordering, IDs, names, current and original colors, and the active run.
 - Selected ions, ion colors, the current ion preview, and TIC/XIC scaling state.
+- Each sample's display weight, automatic versus manual chromatogram views, and
+  the original Y tick color beneath the scaled-overlay indicator.
 - Every visited run's selected/subtracted scans, extracted result spectrum, last
   inspected scan, spectrum view, and zoom histories. Unvisited runs remain lazy.
 - Shared chromatogram limits and history, and automatic versus fixed limits,
@@ -105,3 +107,8 @@ For embedded applications or tests, both `explore` and `load_session` accept
 `session_dialog=(action, suggested_path) -> chosen_path`. `action` is `:save` or
 `:open`; returning `nothing` or `""` cancels. This replaces the native picker while
 using the same storage logic.
+
+Session format 3 stores centered logarithmic weights. Format 2 sessions with
+positive weights are normalized on load without changing their relative scaling
+or saved views. Sessions written before relative scaling (format 1) load with
+sample weights of 1.

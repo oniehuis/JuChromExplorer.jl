@@ -20,7 +20,7 @@ end
         @test only(session.runs[1].panels.ion_pin.color[]) == Makie.to_color(:black)
         @test session.runs[1].xic.pinned_colors == [Makie.to_color(:black)]
         @test session.runs[2].xic.pinned_colors == [Makie.to_color(:purple)]
-        @test collect(xic_y(session)) ≈ [1, 419.95]
+        @test collect(xic_y(session)) ≈ [0, 4.2]
         original_x = first(Makie.convert_limit_attribute(session.axis.limits[]))
         pin_ion!(session, 50)
         @test getproperty.(session.pinned_ions[], :mz) == [40, 50]
@@ -31,7 +31,7 @@ end
         @test selected_channel(session.runs[1], 1) == [2, 4, 1]
         @test selected_channel(session.runs[1], 2) == [20, 30, 10]
         @test all(isnan, session.runs[1].xic.pinned_trace[1][][4])
-        @test collect(xic_y(session)) ≈ [1, 31.45]
+        @test collect(xic_y(session)) ≈ [0, 31.5]
         @test first(Makie.convert_limit_attribute(session.axis.limits[])) == original_x
         @test session.runs[1].panels.ion_pin[1][] == [40, 50]
         @test session.runs[1].panels.ion_pin.color[] == Makie.to_color.([:red, :green])
@@ -47,7 +47,7 @@ end
         @test xic_values(session.runs[1]; preview=true) == [200, 300, 100]
         @test plot_color(session.runs[1].xic.preview_trace.color) == Makie.to_color(:blue)
         @test session.runs[1].xic.pinned_trace[1][] === buffer
-        @test collect(xic_y(session)) ≈ [1, 314.95]
+        @test collect(xic_y(session)) ≈ [0, 315]
         @test first(Makie.convert_limit_attribute(session.axis.limits[])) == original_x
         @test panel_viewports(session) == layout
         @test length(session.runs[1].xic.cache) == cache_size + 1
@@ -75,12 +75,12 @@ end
         @test selected_channel(session.runs[2], 1) == [200, 400, 100]
         @test selected_channel(session.runs[2], 2) == [2000, 3000, 1000]
         @test session.runs[2].panels.ion_pin.color[] == Makie.to_color.([:red, :green])
-        @test collect(xic_y(session)) ≈ [100, 3145]
+        @test collect(xic_y(session)) ≈ [0, 3150]
         hover_ion!(session, 60)
         @test session.runs[2].xic.preview_trace.visible[]
         @test !session.runs[1].xic.preview_trace.visible[]
         @test xic_values(session.runs[2]; preview=true) == [20000, 30000, 10000]
-        @test collect(xic_y(session)) ≈ [100, 31495]
+        @test collect(xic_y(session)) ≈ [0, 31500]
         ylims!(session.axis, -1, 10)
         hover_ion!(session, 70)
         @test xic_y(session) == (-1, 10)
@@ -99,7 +99,7 @@ end
         @test all(run -> run.trace.visible[], session.runs)
         @test isnothing(session.xic.scaling.manual_y)
         pin_ion!(session, 60)
-        @test collect(xic_y(session)) ≈ [100, 31495]
+        @test collect(xic_y(session)) ≈ [0, 315]
         @test isempty(session.zoom.history)
     finally
         close(session.screen)
@@ -220,21 +220,21 @@ end
             @test length(session.pinned_ions[]) == 2
             loadpaths!(session, goodpath)
             @test session.active_index == 2
-            @test session.axis.finallimits[] == chosen
+            @test session.axis.finallimits[] == chosen # the sole original run stayed at weight 1
             @test session.runs[2].xic.pinned_colors == colors
             @test !session.runs[1].xic.pinned_trace.visible[]
             focus_panel!(session.axis)
             upper_limit_key!(session, Keyboard.r)
-            @test collect(xic_y(session)) ≈ [10, 314.5]
+            @test collect(xic_y(session)) ≈ [0, 315]
             move_hover!(session, 0.01)
             pin_ion!(session, 40)
             pin_ion!(session, 50) # reset manual Y, retaining the shared retention history
             @test isempty(session.pinned_ions[])
-            @test xic_y(session) == (-10, 10000)
+            @test collect(xic_y(session)) ≈ [-10, 10000]
             @test isnothing(session.xic.scaling.manual_y)
             @test length(session.zoom.history) == 1
             pin_ion!(session, 60)
-            @test collect(xic_y(session)) ≈ [100, 3145]
+            @test collect(xic_y(session)) ≈ [0, 3150]
             @test length(session.zoom.history) == 1
             @test (minimum(session.axis.finallimits[])[1], maximum(session.axis.finallimits[])[1]) ==
                 (minimum(chosen)[1], maximum(chosen)[1])

@@ -14,7 +14,7 @@ function focus_panel!(ax)
 end
 
 @testset "Spectrum scaling stops at the default while retaining base-peak labels" begin
-    session = explore(run_fixture(); screen=HIDDEN_SCREEN)
+    session = explore([run_fixture(), run_fixture()]; screen=HIDDEN_SCREEN)
     try
         mark_scan!(session, Keyboard.a, 0.5)
         for (ax, trace) in ((session.spectrum_axis, session.spectrum_trace),
@@ -48,7 +48,8 @@ end
         ylims!(session.axis, 0, 95)
         focus_panel!(session.axis)
         upper_limit_key!(session, Keyboard.down; repeats=3)
-        @test maximum(session.axis.finallimits[])[2] ≈ 95 * 1.1^4
+        @test maximum(session.axis.finallimits[])[2] == 95
+        @test session.runs[1].weight / session.runs[2].weight ≈ 1 / 1.1^4
     finally
         close(session.screen)
     end
@@ -80,9 +81,9 @@ end
         [-20.0, 100.0, 0.0], [-20.0, -10.0, -15.0])
         source = MassScanSeries([MassScan(Float64(i), [40.0], [value])
             for (i, value) in enumerate(values)])
-        session = explore(source; screen=HIDDEN_SCREEN)
+        session = explore([source, source]; screen=HIDDEN_SCREEN)
         try
-            lower = minimum(values)
+            lower = min(0, minimum(values))
             original = session.axis.finallimits[]
             @test minimum(original)[2] ≈ lower atol=1e-12
             @test maximum(original)[2] > maximum(values)
@@ -90,7 +91,8 @@ end
             focus_panel!(session.axis)
             upper_limit_key!(session, Keyboard.up; repeats=15)
             @test minimum(session.axis.finallimits[])[2] == minimum(original)[2]
-            @test session.axis.finallimits[].widths[2] ≈ original.widths[2] / 1.1^16
+            @test session.axis.finallimits[] == original
+            @test session.runs[1].weight / session.runs[2].weight ≈ 1.1^16
             upper_limit_key!(session, Keyboard.down; repeats=3)
             @test minimum(session.axis.finallimits[])[2] == minimum(original)[2]
             upper_limit_key!(session, Keyboard.r)
@@ -109,13 +111,14 @@ end
     mktempdir() do path
         session = explore(source; importer=_ -> negative, screen=HIDDEN_SCREEN)
         try
-            @test minimum(session.axis.finallimits[])[2] ≈ 5
+            @test minimum(session.axis.finallimits[])[2] == 0
             loadpaths!(session, path)
             @test isempty(session.import_errors)
             @test minimum(session.axis.finallimits[])[2] ≈ -20
-            shared = session.axis.finallimits[]
             next_run!(session)
-            @test session.axis.finallimits[] == shared
+            shared = session.axis.finallimits[]
+            @test minimum(shared)[2] == 0
+            @test maximum(shared)[2] == 105
             focus_panel!(session.axis)
             upper_limit_key!(session, Keyboard.up; repeats=5)
             @test minimum(session.axis.finallimits[])[2] == minimum(shared)[2]
@@ -128,7 +131,7 @@ end
 end
 
 @testset "Upper-limit shortcuts target only the hovered panel" begin
-    session = explore(run_fixture(); screen=HIDDEN_SCREEN)
+    session = explore([run_fixture(), run_fixture()]; screen=HIDDEN_SCREEN)
     try
         axes = (session.axis, session.spectrum_axis, session.result_axis)
         for ax in axes
@@ -140,7 +143,7 @@ end
             upper_limit_key!(session, Keyboard.up)
             @test minimum(ax.finallimits[]) == minimum(original[index])
             @test maximum(ax.finallimits[])[1] == maximum(original[index])[1]
-            @test maximum(ax.finallimits[])[2] ≈ 5 + 90 / 1.1
+            @test maximum(ax.finallimits[])[2] ≈ (index == 1 ? 95 : 5 + 90 / 1.1)
             for other in setdiff(1:3, [index])
                 @test axes[other].finallimits[] == original[other]
             end
@@ -148,7 +151,7 @@ end
             @test ax.finallimits[] ≈ original[index]
             # Press + two native repeats performs three steps; releases do nothing.
             upper_limit_key!(session, Keyboard.up; repeats=2)
-            @test maximum(ax.finallimits[])[2] ≈ 5 + 90 / 1.1^3
+            @test maximum(ax.finallimits[])[2] ≈ (index == 1 ? 95 : 5 + 90 / 1.1^3)
             ylims!(ax, 5, 95)
         end
         @test isempty(session.zoom.history)
@@ -161,14 +164,16 @@ end
 end
 
 @testset "Modifiers, window focus and pointer boundaries" begin
-    session = explore(run_fixture(); screen=HIDDEN_SCREEN)
+    session = explore([run_fixture(), run_fixture()]; screen=HIDDEN_SCREEN)
     try
         focus_panel!(session.axis)
         before = session.axis.finallimits[]
+        before_weight = session.runs[1].weight
         for key in (Keyboard.up, Keyboard.down, Keyboard.r)
             tap_key!(session, key)
             upper_limit_key!(session, key; shift=Keyboard.right_shift)
             @test session.axis.finallimits[] == before
+            @test session.runs[1].weight == before_weight
         end
         for modifier in (Keyboard.right_shift, Keyboard.left_control,
             Keyboard.right_alt, Keyboard.left_super)
@@ -176,41 +181,51 @@ end
             upper_limit_key!(session, Keyboard.up)
             selection_key!(session, modifier, Keyboard.release)
             @test session.axis.finallimits[] == before
+            @test session.runs[1].weight == before_weight
         end
         # Pressing Shift while Up is held must not itself adjust the limits.
         selection_key!(session, Keyboard.up, Keyboard.press)
         selection_key!(session, Keyboard.left_shift, Keyboard.press)
         @test session.axis.finallimits[] == before
+        @test session.runs[1].weight == before_weight
         selection_key!(session, Keyboard.left_shift, Keyboard.release)
         selection_key!(session, Keyboard.up, Keyboard.repeat)
         selection_key!(session, Keyboard.up, Keyboard.release)
         @test session.axis.finallimits[] == before
+        @test session.runs[1].weight == before_weight
 
         ev = events(session.axis)
         ev.mouseposition[] = (-10.0, -10.0)
         upper_limit_key!(session, Keyboard.up)
         @test session.axis.finallimits[] == before
+        @test session.runs[1].weight == before_weight
         focus_panel!(session.axis)
         ev.entered_window[] = false
         upper_limit_key!(session, Keyboard.up)
         @test session.axis.finallimits[] == before
+        @test session.runs[1].weight == before_weight
         # A fresh position works without a new window-entry notification.
         area = Makie.viewport(session.axis.scene)[]
         ev.mouseposition[] = Tuple(area.origin + area.widths .* (0.6, 0.5))
         upper_limit_key!(session, Keyboard.up)
-        @test maximum(session.axis.finallimits[])[2] < maximum(before)[2]
+        @test session.axis.finallimits[] == before
+        @test session.runs[1].weight / session.runs[2].weight ≈ 1.1
         before = session.axis.finallimits[]
+        before_weight = session.runs[1].weight
         ev.hasfocus[] = false
         upper_limit_key!(session, Keyboard.up)
         @test session.axis.finallimits[] == before
+        @test session.runs[1].weight == before_weight
         focus_panel!(session.axis)
         left_button!(session, Mouse.press)
         upper_limit_key!(session, Keyboard.up)
         @test session.axis.finallimits[] == before
+        @test session.runs[1].weight == before_weight
         left_button!(session, Mouse.release)
         close(session.screen)
         upper_limit_key!(session, Keyboard.up)
         @test session.axis.finallimits[] == before
+        @test session.runs[1].weight == before_weight
     finally
         close(session.screen)
     end
@@ -253,7 +268,7 @@ end
         upper_limit_key!(session, Keyboard.up)
         fixed = session.axis.finallimits[]
         add_run!(session, run_fixture(; values=[100.0, 10.0]))
-        @test session.axis.finallimits[] == fixed
+        @test session.axis.finallimits[] == fixed # a single run keeps normalized weight 1
         @test maximum(session.spectrum_axis.finallimits[])[2] == 80
         @test maximum(session.result_axis.finallimits[])[2] == 110
         focus_panel!(session.axis)
@@ -267,7 +282,7 @@ end
         @test minimum(session.axis.finallimits[]) == minimum(fixed)
         shared = session.axis.finallimits[]
         activate_run!(session, 1)
-        @test session.axis.finallimits[] == shared
+        @test maximum(session.axis.finallimits[])[2] ≈ 33 * 1.05
         @test session.selected_scans[] == selected
         @test session.spectrum_axis === original_panels.spectrum_axis
         @test minimum(session.spectrum_axis.finallimits[])[2] == 5
@@ -286,7 +301,7 @@ end
     end
 end
 
-@testset "Automatic TIC reset fits inactive runs as well" begin
+@testset "Automatic TIC reset fits only the focus, including active-only views" begin
     session = explore([run_fixture(; values=[1000.0, 100.0]), run_fixture()];
         overlay=false, screen=HIDDEN_SCREEN)
     try
@@ -294,16 +309,15 @@ end
         ylims!(session.axis, 0, 10)
         focus_panel!(session.axis)
         upper_limit_key!(session, Keyboard.r)
-        @test maximum(session.axis.finallimits[])[2] >= 3300
+        @test maximum(session.axis.finallimits[])[2] ≈ 33 * 1.05
         @test !session.runs[1].trace.visible[]
         @test session.runs[2].trace.visible[]
         add_run!(session, run_fixture(; values=[100.0, 10.0]))
-        @test maximum(session.axis.finallimits[])[2] >= 3300
+        @test maximum(session.axis.finallimits[])[2] ≈ 330 * 1.05
         @test count(run -> run.trace.visible[], session.runs) == 1
-        shared = session.axis.finallimits[]
-        for index in (1, 2, 3)
+                for index in (1, 2, 3)
             activate_run!(session, index)
-            @test session.axis.finallimits[] == shared
+            @test maximum(session.axis.finallimits[])[2] ≈ maximum(session.runs[index].tic_values) * 1.05
         end
     finally
         close(session.screen)
@@ -311,7 +325,7 @@ end
 end
 
 @testset "Upper-limit controls coexist with rectangle zoom" begin
-    session = explore(run_fixture(); screen=HIDDEN_SCREEN)
+    session = explore([run_fixture(), run_fixture()]; screen=HIDDEN_SCREEN)
     try
         focus_panel!(session.axis)
         original = session.axis.finallimits[]
@@ -323,7 +337,8 @@ end
         @test maximum(session.axis.finallimits[])[1] == maximum(zoomed)[1]
         @test session.zoom.history == history
         upper_limit_key!(session, Keyboard.r)
-        @test minimum(session.axis.finallimits[]) == minimum(zoomed)
+        @test minimum(session.axis.finallimits[])[1] == minimum(zoomed)[1]
+        @test minimum(session.axis.finallimits[])[2] == 0
         @test maximum(session.axis.finallimits[])[2] ≈ maximum(original)[2]
         @test session.zoom.history == history
         doubleclick!(session)
@@ -343,13 +358,14 @@ end
 
 @testset "Upper-limit controls on reversed logarithmic axes" begin
     series = ChromScanSeries([ChromScan(x, x) for x in [1.0, 10.0, 100.0]])
-    session = explore(series; axis=(; xscale=log10, yscale=log10), screen=HIDDEN_SCREEN)
+    session = explore([series, series]; axis=(; xscale=log10, yscale=log10), screen=HIDDEN_SCREEN)
     try
         limits!(session.axis, 100, 1, 100, 1)
         focus_panel!(session.axis)
         before = session.axis.finallimits[]
         upper_limit_key!(session, Keyboard.up)
-        @test maximum(session.axis.finallimits[])[2] ≈ 10^(2 / 1.1)
+        @test session.axis.finallimits[] == before
+        @test session.runs[1].weight / session.runs[2].weight ≈ 1.1
         @test minimum(session.axis.finallimits[])[2] == 1
         upper_limit_key!(session, Keyboard.down)
         @test session.axis.finallimits[] ≈ before

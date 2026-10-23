@@ -46,8 +46,8 @@ xic_values(run; preview=false) = last.((preview ? run.xic.preview_trace : run.xi
         @test plot_color(session.runs[2].xic.preview_trace.color) == Makie.to_color(:darkorange)
         @test all(run -> !run.trace.visible[], session.runs)
         @test session.runs[2].xic.preview_trace.alpha[] ≈ 0.25
-        @test minimum(session.axis.finallimits[])[2] == -5
-        @test maximum(session.axis.finallimits[])[2] ≈ 105.25
+        @test minimum(session.axis.finallimits[])[2] == 0
+        @test maximum(session.axis.finallimits[])[2] ≈ 21
         @test first(Makie.convert_limit_attribute(session.axis.limits[])) ==
             (minimum(original)[1], maximum(original)[1])
         @test session.runs[1].panels.ion_hover.visible[]
@@ -126,8 +126,8 @@ xic_values(run; preview=false) = last.((preview ? run.xic.preview_trace : run.xi
         tap_key!(session, Keyboard.c)
         @test isempty(session.selected_scans[])
         @test length(session.pinned_ions[]) == 1
-        @test minimum(session.axis.finallimits[])[2] == -5
-        @test maximum(session.axis.finallimits[])[2] ≈ 105.25
+        @test minimum(session.axis.finallimits[])[2] == 0
+        @test maximum(session.axis.finallimits[])[2] ≈ 21
     finally
         close(session.screen)
     end

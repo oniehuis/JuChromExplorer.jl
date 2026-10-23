@@ -1,6 +1,6 @@
 const DEFAULT_SESSION_COMPRESSION = :none
 const SESSION_FORMAT = "JuChromExplorer session"
-const SESSION_FORMAT_VERSION = 1
+const SESSION_FORMAT_VERSION = 3
 
 "Runtime file operations; callbacks, tasks, and windows never enter the session file."
 mutable struct SessionFileState

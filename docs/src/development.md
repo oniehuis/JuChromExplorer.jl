@@ -44,6 +44,19 @@ The tests exercise GLMakie with hidden windows, so they still require a graphica
 display and OpenGL context. GitHub Actions supplies Xvfb and software OpenGL on
 Linux.
 
+Check that every executable source line is covered:
+
+```sh
+julia --project=test -e 'using Pkg; Pkg.instantiate()'
+julia --project=test test/coverage.jl
+```
+
+This runs the full suite with source coverage enabled and fails below 100% line
+coverage. It uses a fresh trace, includes functions that were never compiled, and
+writes `coverage/lcov.info`. Old `.cov` files are not merged into the result.
+CI runs this check on each supported Julia version. Line coverage records whether
+each executable line ran; it does not measure every branch or input combination.
+
 ## Documentation
 
 Prepare the separate documentation environment and build the site:

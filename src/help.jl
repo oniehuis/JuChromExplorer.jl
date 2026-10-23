@@ -17,12 +17,13 @@ function help_groups(session)
     groups = [
         ("Window", "← / →   Previous / next run (wrap)\nDelete / Backspace   Remove run from viewer\nLeft Shift + 1–9   Active left-axis TIC color\nLeft Shift + 0   Restore original TIC color\nRight Shift + 0–9   Right axis (reserved)\n$modifier + S   Save session\n$modifier + Shift + S   Save session as…\n$modifier + O   Open session\nShift + Q   Close window"),
         (ms ? "All three panels — under the mouse" : "Plot under the mouse",
-            "Left-drag   Zoom into a region\nDouble-click   Undo one zoom level\nLeft Shift + ↑ / ↓   Peaks taller / shorter\nLeft Shift + R   Reset Y scaling\nEsc   Cancel drag"),
+            "Left-drag   Zoom into a region\nDouble-click   Undo one zoom level\nLeft Shift + R   Fit/reset Y (keep weights)\nEsc   Cancel drag"),
         (ms ? "Upper chromatogram" : "Chromatogram",
-            ms ? "Hover   Inspect scan\nA + click/drag   Mark scans for addition\nS + click/drag   Mark scans for subtraction\nRepeat with same key   Remove scan marks\nC   Clear scan selections" : "Hover   Inspect scan"),
+            "Left Shift + ↑ / ↓   Other samples smaller / larger\nLeft Shift + W   Reset all sample weights\n" *
+            (ms ? "Hover   Inspect scan\nA + click/drag   Mark scans for addition\nS + click/drag   Mark scans for subtraction\nRepeat with same key   Remove scan marks\nC   Clear scan selections" : "Hover   Inspect scan")),
     ]
     ms && push!(groups, ("Middle mass spectrum",
-        "Hover   Preview ion trace\nX + click   Select / deselect ion\nC   Clear ion selections"))
+        "Left Shift + ↑ / ↓   Spectrum peaks taller / shorter\nHover   Preview ion trace\nX + click   Select / deselect ion\nC   Clear ion selections"))
     return groups
 end
 
@@ -112,7 +113,7 @@ function refresh_help!(session)
         # or GridLayout. Reduce font size only if the window is unusually short.
         positions = fill(Point2f(0), 4)
         content_height, palette_height, footer_height = 0.0, 0.0, 0.0
-        for attempt in 1:3
+        for attempt in 1:8
             bottoms = fill(0.0, columns)
             for i in eachindex(plots.headings)
                 shown = i <= length(groups)
@@ -140,7 +141,7 @@ function refresh_help!(session)
             content_height = maximum(bottoms) - 16
             total = 2padding + 34 + content_height + 18 + palette_height + 8 + footer_height
             total <= height - 24 && break
-            fontsize *= max(0.5, (height - 24) / total)
+            fontsize *= clamp((height - 24) / total, 0.25, 0.9)
         end
         card_height = 2padding + 34 + content_height + 18 + palette_height + 8 + footer_height
         target = isnothing(session.spectrum_axis) ? session.axis : session.spectrum_axis

@@ -56,16 +56,15 @@ jobs:
           Pkg.instantiate()
           Pkg.build()
           Pkg.precompile()
-      - uses: julia-actions/julia-runtest@v1
-        with:
-          prefix: xvfb-run -a -s '-screen 0 1280x1024x24'
-          coverage: 'true'
-      - name: Process coverage
-        uses: julia-actions/julia-processcoverage@v1
-        with:
-          directories: src
+      - name: Prepare test environment
+        shell: xvfb-run -a -s "-screen 0 1280x1024x24" julia --color=yes --project=test {0}
+        run: |
+          using Pkg
+          Pkg.instantiate()
+      - name: Test and require complete source line coverage
+        run: xvfb-run -a -s '-screen 0 1280x1024x24' julia --color=yes --project=test test/coverage.jl
       - uses: codecov/codecov-action@v7
         with:
-          files: lcov.info
+          files: coverage/lcov.info
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false

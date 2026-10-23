@@ -4,7 +4,7 @@ xic_limit_fixture(first=[2.0, 4.0, 1.0], second=[20.0, 30.0, 10.0]) =
 
 xic_y(session) = (minimum(session.axis.finallimits[])[2], maximum(session.axis.finallimits[])[2])
 
-@testset "XIC fitting compares runs for one ion and the focused run for multiple ions" begin
+@testset "XIC fitting uses the focused run for single and multiple ions" begin
     session = explore([xic_limit_fixture(), xic_limit_fixture([5.0, 40.0, -2.0], [50.0, 80.0, 10.0])];
         screen=HIDDEN_SCREEN, overlay=false)
     try
@@ -14,22 +14,22 @@ xic_y(session) = (minimum(session.axis.finallimits[])[2], maximum(session.axis.f
         xlims!(session.spectrum_axis, 35, 55)
         preview_limits, result_limits = session.spectrum_axis.finallimits[], session.result_axis.finallimits[]
         hover_ion!(session, 40)
-        @test collect(xic_y(session)) ≈ collect((-2, 42.1))
-        @test !session.runs[2].xic.preview_trace.visible[] # still contributes to comparison scale
+        @test collect(xic_y(session)) ≈ collect((0, 4.2))
+        @test !session.runs[2].xic.preview_trace.visible[] # hidden overlays do not determine the focused range
         @test session.spectrum_axis.finallimits[] == preview_limits
         @test session.result_axis.finallimits[] == result_limits
         @test isnothing(session.xic.scaling.manual_y)
         pin_ion!(session, 40)
         hover_ion!(session, 50)
-        @test collect(xic_y(session)) ≈ [1, 31.45]
+        @test collect(xic_y(session)) ≈ [0, 31.5]
         @test session.runs[1].xic.preview_trace.visible[]
         @test !session.runs[2].xic.preview_trace.visible[]
         move_hover!(session, 0.5)
-        @test collect(xic_y(session)) ≈ collect((-2, 42.1))
+        @test collect(xic_y(session)) ≈ collect((0, 4.2))
         # A retention zoom does not change which run/scan defines Y fitting.
         xlims!(session.axis, 1, 1.5)
         hover_ion!(session, 50)
-        @test collect(xic_y(session)) ≈ [1, 31.45]
+        @test collect(xic_y(session)) ≈ [0, 31.5]
         @test isnothing(session.xic.scaling.manual_y)
         clearions!(session)
         @test collect(xic_y(session)) ≈ collect((minimum(tic_limits)[2], maximum(tic_limits)[2]))
@@ -45,11 +45,14 @@ end
         ylims!(session.axis, -10, 12000)
         move_hover!(session, 0.01)
         pin_ion!(session, 40)
-        @test collect(xic_y(session)) ≈ collect((1, 4.15)) # even a manually scaled TIC gets a fresh XIC scale
+        @test collect(xic_y(session)) ≈ collect((0, 4.2)) # even a manually scaled TIC gets a fresh XIC scale
         focus_panel!(session.axis)
         upper_limit_key!(session, Keyboard.up)
         chosen = xic_y(session)
-        @test collect(chosen) ≈ collect((1, 1 + 3.15 / 1.1))
+        @test collect(chosen) ≈ [0, 4.2]
+        # Weight controls keep automatic fitting active; explicit limits lock the view.
+        ylims!(session.axis, 0, 4)
+        chosen = xic_y(session)
         hover_ion!(session, 50)
         @test xic_y(session) == chosen
         pin_ion!(session, 50)
@@ -57,7 +60,7 @@ end
         @test xic_y(session) == chosen
         focus_panel!(session.axis)
         upper_limit_key!(session, Keyboard.r)
-        @test collect(xic_y(session)) ≈ collect((10, 31))
+        @test collect(xic_y(session)) ≈ collect((0, 31.5))
         @test isnothing(session.xic.scaling.manual_y)
         ylims!(session.axis, 0, 15)
         hover_ion!(session, 40)
@@ -65,16 +68,16 @@ end
         clearions!(session)
         @test xic_y(session) == (-10, 12000)
         pin_ion!(session, 40)
-        @test collect(xic_y(session)) ≈ collect((1, 4.15)) # new selection starts automatically
+        @test collect(xic_y(session)) ≈ collect((0, 4.2)) # new selection starts automatically
         # Makie's automatic/partial Y limits use XICs too.
         ylims!(session.axis, 0, nothing)
-        @test collect(xic_y(session)) ≈ collect((0, 4.15))
+        @test collect(xic_y(session)) ≈ collect((0, 4.2))
         hover_ion!(session, 50)
-        @test collect(xic_y(session)) ≈ [0, 31.45]
+        @test collect(xic_y(session)) ≈ [0, 31.5]
         ylims!(session.axis, nothing, nothing)
-        @test collect(xic_y(session)) ≈ [1, 31.45]
+        @test collect(xic_y(session)) ≈ [0, 31.5]
         move_hover!(session, 0.01)
-        @test collect(xic_y(session)) ≈ [1, 4.15]
+        @test collect(xic_y(session)) ≈ [0, 4.2]
         clearions!(session)
         @test xic_y(session) == (-10, 12000)
     finally
@@ -93,19 +96,19 @@ end
         try
             move_hover!(session, 0.01)
             pin_ion!(session, 40)
-            @test collect(xic_y(session)) ≈ collect((1, 4.15))
+            @test collect(xic_y(session)) ≈ collect((0, 4.2))
             add_run!(session, large; activate=false)
-            @test collect(xic_y(session)) ≈ collect((1, 209.95))
+            @test collect(xic_y(session)) ≈ collect((0, 4.2))
             next_run!(session)
-            @test collect(xic_y(session)) ≈ collect((1, 209.95))
+            @test collect(xic_y(session)) ≈ collect((0, 210))
             next_run!(session)
             remove_run!(session, 2)
-            @test collect(xic_y(session)) ≈ collect((1, 4.15))
+            @test collect(xic_y(session)) ≈ collect((0, 4.2))
             @test_logs (:warn, r"Could not import") loadpaths!(session, badpath)
-            @test collect(xic_y(session)) ≈ collect((1, 4.15))
+            @test collect(xic_y(session)) ≈ collect((0, 4.2))
             @test isnothing(session.xic.scaling.manual_y)
             loadpaths!(session, goodpath)
-            @test collect(xic_y(session)) ≈ collect((1, 209.95))
+            @test collect(xic_y(session)) ≈ collect((0, 210))
             ylims!(session.axis, -1, 10)
             remove_run!(session)
             add_run!(session, large)
@@ -120,7 +123,7 @@ end
             add_run!(session, small)
             move_hover!(session, 0.01)
             pin_ion!(session, 40)
-            @test collect(xic_y(session)) ≈ collect((1, 4.15)) # old units/manual range no longer apply
+            @test collect(xic_y(session)) ≈ collect((0, 4.2)) # old units/manual range no longer apply
         finally
             close(session.screen)
         end
@@ -128,8 +131,8 @@ end
 end
 
 @testset "Zero, constant, negative, and logarithmic XIC ranges" begin
-    for (values, expected) in (([0.0, 0, 0], (0, 1)), ([7.0, 7, 7], (7, 7.35)),
-        ([-5.0, -5, -5], (-5, -4.75)), ([-5.0, -3, -4], (-5, -2.9)))
+    for (values, expected) in (([0.0, 0, 0], (0, 1)), ([7.0, 7, 7], (0, 7.35)),
+        ([-5.0, -5, -5], (-5, 0.25)), ([-5.0, -3, -4], (-5, 0.25)))
         session = explore(xic_limit_fixture(values); screen=HIDDEN_SCREEN)
         try
             session.hovered_ion[] = JuChromExplorer.IonTarget(40, nothing)
@@ -166,7 +169,7 @@ xic_x(session) = (minimum(session.axis.finallimits[])[1], maximum(session.axis.f
         pin_ion!(session, 50)
         @test length(session.zoom.history) == 2
         fitted = xic_y(session)
-        @test collect(fitted) ≈ [1, 31.45]
+        @test collect(fitted) ≈ [0, 31.5]
         @test collect(xic_x(session)) ≈ [minimum(second_zoom)[1], maximum(second_zoom)[1]]
         drag_zoom!(session, (0.1, 0.1), (0.9, 0.9))
         @test length(session.zoom.history) == 3
@@ -207,10 +210,10 @@ end
         @test xic_x(session) == current_x
         @test collect(xic_y(session)) ≈ [minimum(tic_zoom)[2], maximum(tic_zoom)[2]]
         pin_ion!(session, 50)
-        @test collect(xic_y(session)) ≈ [10, 31]
+        @test collect(xic_y(session)) ≈ [0, 31.5]
         @test isnothing(session.xic.scaling.manual_y)
         doubleclick!(session) # old ion's 0–2 Y range must not come back
-        @test collect(xic_y(session)) ≈ [10, 31]
+        @test collect(xic_y(session)) ≈ [0, 31.5]
         @test isnothing(session.xic.scaling.manual_y)
         @test collect(xic_x(session)) ≈ [minimum(tic_zoom)[1], maximum(tic_zoom)[1]]
         clearions!(session)

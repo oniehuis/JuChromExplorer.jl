@@ -40,10 +40,7 @@ end
 
 function reset_upper_limit!(session, ax)
     if ax === session.axis
-        session.xic.scaling.active && return reset_xic_scaling!(session)
-        return with_all_tics_visible(session) do
-            set_upper_limit!(ax, nothing)
-        end
+        return reset_xic_scaling!(session)
     end
     return set_upper_limit!(ax, upper_limit_ceiling(session, ax))
 end
@@ -64,8 +61,8 @@ function attach_upper_limit_controls!(session)
     end
     on(owner, ev.keyboardbutton; priority=2) do event
         event.action in (Keyboard.press, Keyboard.repeat) || return Consume(false)
-        event.key in (Keyboard.up, Keyboard.down, Keyboard.r) || return Consume(false)
-        event.key == Keyboard.r && event.action == Keyboard.repeat && return Consume(false)
+        event.key in (Keyboard.up, Keyboard.down, Keyboard.r, Keyboard.w) || return Consume(false)
+        event.key in (Keyboard.r, Keyboard.w) && event.action == Keyboard.repeat && return Consume(false)
         ev.window_open[] && ev.hasfocus[] && pointer_in_window[] || return Consume(false)
         isempty(session.runs) && return Consume(false)
         ispressed(owner, Keyboard.left_shift) || return Consume(false)
@@ -80,6 +77,11 @@ function attach_upper_limit_controls!(session)
             ax.scene.visible[] && Makie.is_mouseinside(ax.scene) || continue
             if event.key == Keyboard.r
                 reset_upper_limit!(session, ax)
+            elseif event.key == Keyboard.w
+                ax === session.axis || return Consume(false)
+                reset_weights!(session)
+            elseif ax === session.axis
+                change_focus_weight!(session, event.key == Keyboard.up ? 1.1 : 1 / 1.1)
             else
                 # Follow the visible signal: Up makes peaks taller by narrowing
                 # the Y range; Down makes them shorter by widening it.

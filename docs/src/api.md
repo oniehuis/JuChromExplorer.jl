@@ -23,6 +23,8 @@ add_run!
 remove_run!
 activate_run!
 next_run!
+set_run_weight!
+reset_weights!
 ```
 
 ## Importing files

@@ -57,6 +57,11 @@ session = explore(series; retentionunit=u"minute")
 Move over the chromatogram to inspect spectra. Press **H** for keyboard and mouse
 help, or **Shift+Q** to close the window. The Julia REPL remains available.
 
+In the chromatogram, **Left Shift + ↑/↓** scales the other samples relative to
+the focused sample, whose intensities remain correct on the Y axis. Weights
+survive zoom and saved sessions. **Left Shift + R** fits the focused signal;
+**Left Shift + W** restores all weights to 1.
+
 Press **Cmd+S** on macOS or **Ctrl+S** on Windows/Linux to save all loaded data and
 working views in a JLD2 session. Add **Shift** for Save As, or use **Cmd+O / Ctrl+O**
 to restore a session in the current window. Session files are uncompressed by default.

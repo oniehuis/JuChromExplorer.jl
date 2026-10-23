@@ -8,6 +8,9 @@ mutable struct ExplorerRun
     series::ExplorerData
     retentions::Vector{Float64}
     trace::Any
+    tic_values::Vector{Float64}
+    log_weight::Float64
+    display_factor::Float64
     color::Any
     original_color::Any
     alpha::Float64
@@ -17,13 +20,21 @@ mutable struct ExplorerRun
     inspected_scan::Union{Nothing, Int}
 end
 
+function Base.getproperty(run::ExplorerRun, name::Symbol)
+    name === :weight && return exp(getfield(run, :log_weight))
+    return getfield(run, name)
+end
+Base.propertynames(::ExplorerRun, private::Bool=false) = (fieldnames(ExplorerRun)..., :weight)
+
 """
     ExplorerSession
 
 A window containing an ordered collection of prepared runs. `runs` and
 `active_index` describe the collection; use `add_run!`, `remove_run!`,
 `activate_run!` and `next_run!` to change it. Each run has a stable `id` and an
-assigned TIC `color` and initial `original_color`, stored separately from its original data.
+assigned TIC `color`, initial `original_color`, and positive display `weight`,
+stored as a centered `log_weight` separately from its original data. Weights have
+geometric mean 1; use `set_run_weight!` to change them.
 Left Shift + 1–9 select a color from the window's fixed `tic.palette` for the
 active run's left-axis TIC; unavailable slots do nothing. Left Shift + 0 restores
 its original color. Right Shift is reserved for a future secondary Y axis.
@@ -85,6 +96,7 @@ mutable struct ExplorerSession
     named::Bool
     import_state::ImportState
     xic::XICState
+    scaling::IntensityScaling
     readout::ScanReadout
     help::ExplorerHelp
     empty_panels::Union{Nothing, Tuple{Axis, Axis}}
@@ -192,6 +204,7 @@ function update_run_appearance!(session)
             (!multi_ion_mode(session) || focused)
         update_xic_appearance!(session, run, focused)
     end
+    update_scaling_indicator!(session)
     run = active_run(session)
     title = if isnothing(run)
         "Chromatogram · TIC — no runs loaded"
@@ -204,6 +217,7 @@ function update_run_appearance!(session)
     if isempty(mode) && !isnothing(run) && has_spectra(run.series)
         mode = "TIC"
     end
+    session.scaling.indicating && (mode *= isempty(mode) ? "overlays scaled" : " · overlays scaled")
     session.axis.title[] = isempty(mode) ? title : isempty(title) ? mode : "$title · $mode"
     update_readout!(session)
     refresh_help!(session)
@@ -304,13 +318,22 @@ end
 """
     activate_run!(session, index)
 
-Focus a run by its current position. The retention view and manual Y limits remain
-unchanged. With multiple selected ions, automatic Y limits fit the new run.
+Focus a run by its current position. The retention view stays fixed. Manual Y
+limits and zoom history are converted to its true intensity scale, preserving
+the displayed arrangement. Automatic Y limits fit the newly focused signal.
 Spectrum views and scan groups belong to each run separately.
 """
 function activate_run!(session::ExplorerSession, index::Integer)
     checkbounds(session.runs, index)
     index == session.active_index && return session
+    with_xic_updates_suspended(session) do
+        activate_run_view!(session, index)
+    end
+    refresh_xics!(session)
+    return session
+end
+
+function activate_run_view!(session, index)
     deactivate_run!(session)
     tic_limits = session.axis.targetlimits[]
     session.active_index = index
@@ -339,8 +362,8 @@ function activate_run!(session::ExplorerSession, index::Integer)
     # Creating selection markers also asks Makie to reset the TIC limits. Keep
     # its shared view, including hidden runs, without freezing automatic bounds.
     session.axis.targetlimits[] = tic_limits
+    rebase_intensity_view!(session, run.log_weight)
     session.coordinates[] = run.retentions
-    refresh_xics!(session)
     return session
 end
 
@@ -350,8 +373,8 @@ function next_run!(session::ExplorerSession, step::Integer=1)
     return activate_run!(session, mod1(session.active_index + step, length(session.runs)))
 end
 
-# Shared automatic TIC limits include every loaded run even in active-only mode.
-# These synchronous changes are restored before the next frame can be rendered.
+# Plot insertion temporarily uses Makie limits before the focused signal is fitted.
+# Restore visibility synchronously, before the next frame can be rendered.
 function with_all_tics_visible(f, session)
     hidden = [run.trace for run in session.runs if !run.trace.visible[]]
     try
@@ -372,6 +395,19 @@ function append_run!(session, name, data, xs, explicit_color)
     end
 end
 
+function automatic_palette_index(session)
+    palette = session.styles.tic.palette
+    # Compare the colors themselves, independent of opacity or visibility.
+    used = Set(Makie.RGBf(Makie.to_color(run.color)) for run in session.runs)
+    start = session.next_palette_index
+    for offset in 0:(length(palette) - 1)
+        index = mod1(start + offset, length(palette))
+        Makie.RGBf(palette[index]) in used || return index
+    end
+    # Every color is occupied: continue cycling from the remembered position.
+    return start
+end
+
 function append_run_data!(session, name, data, xs, explicit_color)
     ax = session.axis
     old_limits = ax.targetlimits[]
@@ -380,16 +416,18 @@ function append_run_data!(session, name, data, xs, explicit_color)
     palette = session.styles.tic.palette
     style = Base.structdiff(session.styles.tic, (; palette=nothing))
     use_palette = isnothing(explicit_color) && !haskey(style, :color)
-    color = isnothing(explicit_color) ? get(style, :color, palette[session.next_palette_index]) : explicit_color
+    palette_index = use_palette ? automatic_palette_index(session) : session.next_palette_index
+    color = isnothing(explicit_color) ? get(style, :color, palette[palette_index]) : explicit_color
     trace = JuChrom.tictrace!(session.axis, data;
         retentionunit=session.retentionunit, intensityunit=session.intensityunit,
         axis=session.options.axis, merge(style, (; color))...)
     run = ExplorerRun(session.next_id, unique_run_name(session.runs, name), data, xs,
-        trace, deepcopy(trace.color[]), deepcopy(trace.color[]), Float64(trace.alpha[]), Observable(false), nothing,
+        trace, Float64.(trace.arg2[]), 0.0, 1.0,
+        deepcopy(trace.color[]), deepcopy(trace.color[]), Float64(trace.alpha[]), Observable(false), nothing,
         create_xic_traces!(session, data, trace.color[]), nothing)
     push!(session.runs, run)
     session.next_id += 1
-    use_palette && (session.next_palette_index = mod1(session.next_palette_index + 1, length(palette)))
+    use_palette && (session.next_palette_index = mod1(palette_index + 1, length(palette)))
     # tictrace! sets X to the new run's extent without recomputing Y. Preserve
     # the existing retention view, but keep automatic/partial Y limits automatic.
     requested_x = length(session.runs) > 1 ?
@@ -409,11 +447,14 @@ end
 Append prepared data after checking axis units. Compatible units are converted to
 the window's display units; incompatible or unitful/unitless mixtures are rejected
 before inserting the run. Returns its stable ID. The current retention view and
-manual/zoomed Y limits are preserved unless the window was empty. Automatic Y
-limits adapt to the added data. This does not read files or run an importer.
+manual/zoomed arrangement are preserved unless the window was empty. New runs
+start with weight 1; automatic Y limits fit the focused signal. This does not
+read files or run an importer.
 In a NamedTuple, only `data` is required. An optional `color` overrides the window's
 TIC color and palette; `nothing` uses the normal fallback. Explicit colors do not
 consume palette entries. Existing runs retain their colors.
+Automatic assignments search forward through the palette for an unused color,
+wrapping as needed; if every color is in use, normal cycling continues.
 """
 function add_run!(session::ExplorerSession, input; activate::Bool=true)
     name, data, color = run_input(input, "Run $(session.next_id)")
@@ -443,6 +484,15 @@ Removing the last run leaves an empty, reusable explorer. Stable IDs are not reu
 function remove_run!(session::ExplorerSession, index::Integer=session.active_index)
     isempty(session.runs) && return session
     checkbounds(session.runs, index)
+    with_xic_updates_suspended(session) do
+        remove_run_view!(session, index)
+        store_log_weights!(session, [run.log_weight for run in session.runs])
+    end
+    refresh_xics!(session)
+    return session
+end
+
+function remove_run_view!(session, index)
     previous = session.active_index
     index == previous && deactivate_run!(session)
     run = session.runs[index]
@@ -462,6 +512,7 @@ function remove_run!(session::ExplorerSession, index::Integer=session.active_ind
         session.active_index = 0
         clearions!(session)
         session.xic.scaling = XICScaling()
+        session.scaling.reference_log_weight = 0.0
         session.coordinates[] = Float64[]
         session.retentionunit = session.options.retentionunit
         session.intensityunit = session.options.intensityunit
@@ -584,7 +635,8 @@ last run restores this empty layout.
 
 All TICs are overlaid by default; the active run is in front and inactive traces
 use 25% opacity. `overlay=false` shows only the active trace; `inactive_alpha`
-adjusts the inactive opacity multiplier. TICs retain their original intensity scale.
+adjusts the inactive opacity multiplier. The Y axis gives the focused run's true
+intensity; other runs use persistent relative display weights, initially 1.
 The title identifies the active run and its position. Single-data calls keep the
 supplied `title` / `axis.title`, defaulting to "Chromatogram" so ion hover cannot
 add/remove the title row. TIC limits and drag-zoom history are shared.
@@ -612,14 +664,14 @@ ion temporarily enters multi-ion mode; leaving the ion restores the single-ion
 run comparison. Hovering over a selected ion does not duplicate it.
 All XICs are solid. TICs are hidden while XICs are displayed; `xic.tic_alpha` can
 opt into background TICs (0 by default).
-XICs use original intensities. Automatic Y limits fit the selected/previewed ion
-across compatible runs, or all selected and hovered ions in the focused run in multi-ion mode,
-from the minimum to the maximum plus 5% headroom. Manual Y limits persist while
-ions remain selected, including across navigation and mode changes. Left Shift + R
-resumes fitting. Clearing the last ion restores the prior TIC Y scale and clears
-manual XIC limits, so the next selection starts automatically. Retention zoom history
-is shared across TIC/XIC transitions: double-click can undo zooms made before ion
-selection. Saved Y limits are restored only within the same signal context.
+XIC extraction uses original intensities. Each sample's TIC and XIC plots share
+its display weight. Automatic Y limits fit all displayed ions of the focused run,
+including zero and negative values with 5% upper headroom on linear axes. Manual
+Y views persist while ions remain selected; focus changes rebase their limits.
+Left Shift + R resumes fitting without changing weights. Clearing the last ion
+restores the prior fixed or automatic TIC Y view and clears manual XIC limits.
+Retention zoom history is shared across TIC/XIC transitions. Returning to a saved
+automatic full view fits the current focus, while retaining the current weights.
 The retention view stays fixed when changing modes. Missing ions contribute zero; incompatible m/z
 units are skipped. Multi-ion mode stays empty for a focused run without compatible
 MS data, retaining the selection. The middle spectrum always uses original data.
@@ -630,14 +682,17 @@ The upper panel has matching vertical and horizontal hover lines: the vertical
 line snaps to a scan, while the horizontal line follows the pointer intensity.
 Left-drag replaces them with four solid guides and zooms on release; double-click
 undoes one drag zoom; Escape cancels a drag.
-Left Shift + ↑/↓ changes only the upper Y limit in the panel under the mouse, in
-10% steps (holding an arrow repeats): ↑ makes peaks taller by narrowing the Y
-range; ↓ makes them shorter by widening it. Left Shift + R resets
-the TIC upper bound to automatic fitting, or a spectrum to its configured upper
-bound (110% by default, including label headroom above the 100% base peak).
-Spectrum zoom-out stops at that configured default; TIC scaling has no ceiling.
-Lower Y and X limits stay fixed. Right Shift is reserved
-for a future secondary Y axis and currently has no effect.
+In the upper panel, Left Shift + ↑/↓ divides/multiplies all other samples' displayed
+intensities by 1.1, keeping the focused trace and axis fixed. Holding an arrow repeats.
+Weights apply across all retentions and survive zoom, navigation, and saved sessions.
+Negative intensities scale about zero. Red Y tick labels and “overlays scaled” in
+the title identify visible non-focus traces with different effective multipliers.
+Left Shift + R fits the focused signal, retaining weights and X limits.
+Left Shift + W resets all weights to 1 while retaining the view.
+In spectrum panels, Left Shift + ↑/↓ instead makes peaks taller/shorter by changing
+only the upper Y bound. Left Shift + R restores its configured upper bound (110%
+by default). Spectrum zoom-out stops at that default. Right Shift is reserved for
+a future secondary Y axis and currently has no effect.
 Wheel zoom, Ctrl-click limit resets, and right-button panning are disabled in all
 panels. Ordinary Makie `xlims!` / `ylims!` remain available.
 `figure`, `axis`, `spectrum_axis`, `result_axis`, and `screen` configure their Makie
@@ -650,7 +705,10 @@ defaults per attribute. Extra keywords are forwarded to `JuChrom.tictrace!`.
 assignments (Makie's Wong palette by default). A run NamedTuple requires `data`
 and accepts optional `name` and `color`. Color precedence is per-run `color`,
 then `tic.color`, then the palette. Explicit colors do not consume palette entries;
-navigation and removal never reassign colors. Later additions continue the sequence.
+navigation and removal never reassign colors. Later additions search forward from
+the next palette position, wrapping and skipping colors currently used by loaded
+runs (regardless of opacity or visibility). If all colors are in use, they cycle
+from the next position. Removing a run does not rewind the sequence.
 The palette is fixed when the window opens. Left Shift + 1–9 (including the numeric
 keypad) recolor the active run's left-axis TIC using the corresponding palette entry;
 keys beyond the palette length do nothing. Left Shift + 0 restores its original
@@ -703,9 +761,8 @@ function build_explorer(input=nothing;
     coordinates = [validate_run(data, name, retention_unit, intensity_unit) for (name, data, _) in prepared]
     has_ms = any(item -> has_spectra(item[2]), prepared)
     fig = Figure(; merge((; size=(1100, has_ms || isempty(prepared) ? 950 : 450)), figure)...)
-    # Anchor automatic TIC limits at the data minimum, including negative signals.
-    # Padding below the data would otherwise become visible as the upper limit
-    # is lowered. Leave headroom above the peaks and keep spectrum axes separate.
+    # Full intensity views include zero and negative signals. Leave upper headroom
+    # without lower padding, independently of the spectrum axes.
     # The custom header displays axis.title alongside scan information in one row.
     axis = merge((; yautolimitmargin=(0.0, 0.05),
         yticklabelspace=DEFAULT_YTICKLABELSPACE), axis, (; titlevisible=false))
@@ -728,7 +785,8 @@ function build_explorer(input=nothing;
         title=get(styles.tic, :title, get(axis, :title, "Chromatogram")))
     session = ExplorerSession(ExplorerRun[], 0, 1, 1, fig, ax, window, hovered_scan,
         hover_line, hover_horizontal_line, tic_zoom, xs, retention_unit, intensity_unit, options, styles,
-        input isa Union{AbstractVector, Pair, NamedTuple}, ImportState(importer), XICState(), readout, help, nothing,
+        input isa Union{AbstractVector, Pair, NamedTuple}, ImportState(importer), XICState(),
+        IntensityScaling(ax), readout, help, nothing,
         isnothing(target) ? SessionFileState(session_dialog, window.config.title) : target.storage)
     if !isnothing(target)
         for name in fieldnames(ExplorerSession)
@@ -737,6 +795,7 @@ function build_explorer(input=nothing;
         session = target
     end
     try
+        session.xic.scaling.tic_y = last(Makie.convert_limit_attribute(ax.limits[]))
         attach_readout!(session)
         for ((name, data, color), coordinates) in zip(prepared, coordinates)
             append_run!(session, name, data, coordinates, color)

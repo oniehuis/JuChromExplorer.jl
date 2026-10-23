@@ -97,6 +97,8 @@ function import_snapshot(session)
         limits=session.axis.targetlimits[], requested_limits=session.axis.limits[],
         reversed=(session.axis.xreversed[], session.axis.yreversed[]),
         history=copy(session.zoom.history),
+        log_weights=[run.log_weight for run in session.runs],
+        reference_log_weight=session.scaling.reference_log_weight,
         hovered_ion=session.xic.hovered[],
         xic_scaling=deepcopy(session.xic.scaling),
         plots=copy(session.axis.scene.plots), blocks=copy(session.figure.content), attributes)
@@ -124,6 +126,10 @@ function restore_import!(session, snapshot)
         delete!(session.axis, plot)
     end
     resize!(session.runs, snapshot.count)
+    for (run, value) in zip(session.runs, snapshot.log_weights)
+        run.log_weight = value
+    end
+    session.scaling.reference_log_weight = snapshot.reference_log_weight
     session.active_index = 0
     session.next_id = snapshot.next_id
     session.next_palette_index = snapshot.next_palette_index
@@ -260,8 +266,9 @@ vector/tuple of these. An empty collection skips the path. Invalid colors reject
 the whole path, and failed imports do not consume palette entries. Missing
 names use the file/directory stem (plus a position for multiple outputs). Existing
 names are disambiguated with a numeric suffix. The first run from each successful
-path becomes active. The retention view and manual/zoomed Y limits are preserved;
-automatic TIC Y limits adapt to added data. An empty window initializes its view.
+path becomes active, with an initial display weight of 1. The retention view and
+manual/zoomed arrangement are preserved; Y coordinates are converted to the new
+focus. Automatic Y limits fit that run. An empty window initializes its view.
 
 This function waits for the import to finish. Drops are queued in a cooperative
 task; additional drops join that queue. Callbacks run serially on the GUI thread,

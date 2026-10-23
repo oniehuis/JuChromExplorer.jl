@@ -223,11 +223,14 @@ end
         callback = path -> path == badpath ? [bad, good] : higher
         # Failing in the result panel happens after the live spectrum panel was
         # created, so rollback must also delete newly inserted Figure blocks.
-        for failed_panel in (:spectrum_axis, :result_axis), initial in (nothing, good)
+        for failed_panel in (:spectrum_axis, :result_axis), initial in (nothing, good, [good, good])
             panel_options = (; failed_panel => (; xscale=log10))
             session = explore(initial; importer=callback, panel_options..., screen=HIDDEN_SCREEN)
             try
+                length(session.runs) > 1 && set_run_weight!(session, 2)
                 original = session.series
+                log_weights = [run.log_weight for run in session.runs]
+                reference = session.scaling.reference_log_weight
                 count = length(session.runs)
                 plots = length(session.axis.scene.plots)
                 blocks = copy(session.figure.content)
@@ -236,6 +239,8 @@ end
                 @test_logs (:warn, r"Could not import") loadpaths!(session, badpath)
                 @test length(session.runs) == count
                 @test session.series === original
+                @test [run.log_weight for run in session.runs] == log_weights
+                @test session.scaling.reference_log_weight == reference
                 @test length(session.axis.scene.plots) == plots
                 @test session.figure.content == blocks
                 @test length(visible_panel_axes(session)) == 3

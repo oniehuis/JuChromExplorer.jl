@@ -38,7 +38,7 @@ readout_unit(unit) = isnothing(unit) ? "" : " $unit"
 function readout_total(session, run, index)
     name = isnothing(run) || !has_spectra(run.series) ? "Intensity" : "TIC"
     isnothing(index) && return rich("$name —")
-    value = readout_number(run.trace[1][][index][2])
+    value = readout_number(run.tic_values[index])
     return rich("$name $value$(readout_unit(session.intensityunit))"; color=run.color)
 end
 

@@ -22,10 +22,18 @@ NamedTuples can be mixed in the input vector. Importers accept the same forms.
 
 The priority is **per-run `color` → `tic.color` → `tic.palette`**. Use `tic.color`
 for a shared default color, or `tic.palette` for successive automatic colors.
-The default palette is Makie's seven-color Wong palette; palettes repeat when
-exhausted. Colors remain attached to their runs during navigation and deletion.
-New additions and file drops continue the palette sequence, even after removing
-all runs. `session.runs[i].color` records the current color and
+The default palette is Makie's seven-color Wong palette. New additions and file
+drops search forward from the next palette position for a color not currently
+used by a loaded run, wrapping at the end. If every color is in use, normal
+cycling continues from that position. Explicit and manually changed colors count
+as occupied too, regardless of opacity or whether the run is visible.
+
+Deleting runs never rewinds the sequence or changes surviving runs' colors.
+For example, after assigning colors 1–3 from a four-color palette and deleting
+the run with color 2, the next runs get color 4, then color 2. Once all four colors
+are occupied, the following run gets color 3, the next position in the cycle.
+The remembered position is retained even after removing all runs and across
+session save/load. `session.runs[i].color` records the current color and
 `session.runs[i].original_color` retains its initial assignment; the original
 JuChrom data is unchanged.
 
