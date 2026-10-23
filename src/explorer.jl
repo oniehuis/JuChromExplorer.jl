@@ -11,6 +11,8 @@ mutable struct ExplorerRun
     tic_values::Vector{Float64}
     log_weight::Float64
     display_factor::Float64
+    retention_offset::Float64
+    display_offset::Float64
     color::Any
     original_color::Any
     alpha::Float64
@@ -35,6 +37,8 @@ A window containing an ordered collection of prepared runs. `runs` and
 assigned TIC `color`, initial `original_color`, and positive display `weight`,
 stored as a centered `log_weight` separately from its original data. Weights have
 geometric mean 1; use `set_run_weight!` to change them.
+Each run also has a centered `retention_offset` in display units; use
+`set_retention_offset!` to change it. TICs and XICs use focus-relative offsets.
 Left Shift + 1–9 select a color from the window's fixed `tic.palette` for the
 active run's left-axis TIC; unavailable slots do nothing. Left Shift + 0 restores
 its original color. Right Shift is reserved for a future secondary Y axis.
@@ -97,6 +101,7 @@ mutable struct ExplorerSession
     import_state::ImportState
     xic::XICState
     scaling::IntensityScaling
+    alignment::RetentionAlignment
     readout::ScanReadout
     help::ExplorerHelp
     empty_panels::Union{Nothing, Tuple{Axis, Axis}}
@@ -205,6 +210,7 @@ function update_run_appearance!(session)
         update_xic_appearance!(session, run, focused)
     end
     update_scaling_indicator!(session)
+    update_retention_indicator!(session)
     run = active_run(session)
     title = if isnothing(run)
         "Chromatogram · TIC — no runs loaded"
@@ -218,6 +224,7 @@ function update_run_appearance!(session)
         mode = "TIC"
     end
     session.scaling.indicating && (mode *= isempty(mode) ? "overlays scaled" : " · overlays scaled")
+    session.alignment.indicating && (mode *= isempty(mode) ? "retentions shifted" : " · retentions shifted")
     session.axis.title[] = isempty(mode) ? title : isempty(title) ? mode : "$title · $mode"
     update_readout!(session)
     refresh_help!(session)
@@ -318,8 +325,9 @@ end
 """
     activate_run!(session, index)
 
-Focus a run by its current position. The retention view stays fixed. Manual Y
-limits and zoom history are converted to its true intensity scale, preserving
+Focus a run by its current position. Retention limits and zoom history are
+translated to its true retention coordinates. Manual Y limits and zoom history
+are converted to its true intensity scale, preserving
 the displayed arrangement. Automatic Y limits fit the newly focused signal.
 Spectrum views and scan groups belong to each run separately.
 """
@@ -363,6 +371,7 @@ function activate_run_view!(session, index)
     # its shared view, including hidden runs, without freezing automatic bounds.
     session.axis.targetlimits[] = tic_limits
     rebase_intensity_view!(session, run.log_weight)
+    rebase_retention_view!(session, run.retention_offset)
     session.coordinates[] = run.retentions
     return session
 end
@@ -422,7 +431,7 @@ function append_run_data!(session, name, data, xs, explicit_color)
         retentionunit=session.retentionunit, intensityunit=session.intensityunit,
         axis=session.options.axis, merge(style, (; color))...)
     run = ExplorerRun(session.next_id, unique_run_name(session.runs, name), data, xs,
-        trace, Float64.(trace.arg2[]), 0.0, 1.0,
+        trace, Float64.(trace.arg2[]), 0.0, 1.0, 0.0, 0.0,
         deepcopy(trace.color[]), deepcopy(trace.color[]), Float64(trace.alpha[]), Observable(false), nothing,
         create_xic_traces!(session, data, trace.color[]), nothing)
     push!(session.runs, run)
@@ -487,6 +496,7 @@ function remove_run!(session::ExplorerSession, index::Integer=session.active_ind
     with_xic_updates_suspended(session) do
         remove_run_view!(session, index)
         store_log_weights!(session, [run.log_weight for run in session.runs])
+        store_retention_offsets!(session, [run.retention_offset for run in session.runs])
     end
     refresh_xics!(session)
     return session
@@ -513,6 +523,8 @@ function remove_run_view!(session, index)
         clearions!(session)
         session.xic.scaling = XICScaling()
         session.scaling.reference_log_weight = 0.0
+        session.alignment.reference_offset = 0.0
+        session.alignment.full_view = true
         session.coordinates[] = Float64[]
         session.retentionunit = session.options.retentionunit
         session.intensityunit = session.options.intensityunit
@@ -567,6 +579,7 @@ function attach_navigation!(session)
         # Never transfer an in-progress mouse gesture to another run. Leave modified
         # shortcuts to the application/OS rather than deleting on Cmd+Backspace.
         any(key -> ispressed(session.axis, key), (Mouse.left, Mouse.right,
+            Keyboard.left_shift, Keyboard.right_shift,
             Keyboard.left_control, Keyboard.right_control, Keyboard.left_alt,
             Keyboard.right_alt, Keyboard.left_super, Keyboard.right_super)) && return Consume(false)
         if event.key == Keyboard.left
@@ -668,7 +681,7 @@ XIC extraction uses original intensities. Each sample's TIC and XIC plots share
 its display weight. Automatic Y limits fit all displayed ions of the focused run,
 including zero and negative values with 5% upper headroom on linear axes. Manual
 Y views persist while ions remain selected; focus changes rebase their limits.
-Left Shift + R resumes fitting without changing weights. Clearing the last ion
+Left Shift + Y resumes fitting without changing weights. Clearing the last ion
 restores the prior fixed or automatic TIC Y view and clears manual XIC limits.
 Retention zoom history is shared across TIC/XIC transitions. Returning to a saved
 automatic full view fits the current focus, while retaining the current weights.
@@ -683,14 +696,21 @@ line snaps to a scan, while the horizontal line follows the pointer intensity.
 Left-drag replaces them with four solid guides and zooms on release; double-click
 undoes one drag zoom; Escape cancels a drag.
 In the upper panel, Left Shift + ↑/↓ divides/multiplies all other samples' displayed
-intensities by 1.1, keeping the focused trace and axis fixed. Holding an arrow repeats.
+intensities by 1.05, keeping the focused trace and axis fixed. Holding an arrow repeats.
 Weights apply across all retentions and survive zoom, navigation, and saved sessions.
 Negative intensities scale about zero. Red Y tick labels and “overlays scaled” in
 the title identify visible non-focus traces with different effective multipliers.
-Left Shift + R fits the focused signal, retaining weights and X limits.
+Left Shift + Y fits the focused signal, retaining weights and X limits.
 Left Shift + W resets all weights to 1 while retaining the view.
+Left Shift + ←/→ shifts other runs left/right while keeping the focus's true
+retentions and the viewport fixed. Each step is `retention_step` times the visible
+retention span (default 0.0025). Offsets require a linear retention axis and apply
+to TICs and XICs across the whole run. Focus changes translate X limits and zoom
+history to preserve alignment. Red X ticks identify visible shifted overlays.
+Left Shift + R clears offsets; Left Shift + F fits the full retention
+range, including shifted extents. Sessions preserve offsets and the keyboard step.
 In spectrum panels, Left Shift + ↑/↓ instead makes peaks taller/shorter by changing
-only the upper Y bound. Left Shift + R restores its configured upper bound (110%
+only the upper Y bound. Left Shift + Y restores its configured upper bound (110%
 by default). Spectrum zoom-out stops at that default. Right Shift is reserved for
 a future secondary Y axis and currently has no effect.
 Wheel zoom, Ctrl-click limit resets, and right-button panning are disabled in all
@@ -744,11 +764,13 @@ function build_explorer(input=nothing;
     hover::NamedTuple=(;), zoom::NamedTuple=(;), spectrum::NamedTuple=(;),
     selection::NamedTuple=(;), subtraction::NamedTuple=(;), result_spectrum::NamedTuple=(;),
     xic::NamedTuple=(;), ion::NamedTuple=(;),
-    overlay::Bool=true, inactive_alpha::Real=0.25, importer=default_importer(),
+    overlay::Bool=true, inactive_alpha::Real=0.25, retention_step::Real=0.0025, importer=default_importer(),
     session_compression=DEFAULT_SESSION_COMPRESSION, session_dialog=native_session_dialog, kwargs...)
     validate_importer(importer)
     session_compression = validate_session_compression(session_compression)
     0 <= inactive_alpha <= 1 || throw(ArgumentError("inactive_alpha must be between 0 and 1."))
+    isfinite(retention_step) && 0 < retention_step <= 1 ||
+        throw(ArgumentError("retention_step must be finite, greater than 0 and at most 1."))
     styles = resolve_styles(; tic, hover, zoom, spectrum, selection, subtraction,
         result_spectrum, xic, ion, legacy_tic=(; kwargs...))
     inputs = isnothing(input) ? [] : input isa AbstractVector ? input : [input]
@@ -781,12 +803,12 @@ function build_explorer(input=nothing;
     end
     options = (; axis, spectrum_axis, result_axis, retentionunit, intensityunit, figure,
         session_compression,
-        overlay, inactive_alpha=Float64(inactive_alpha),
+        overlay, inactive_alpha=Float64(inactive_alpha), retention_step=Float64(retention_step),
         title=get(styles.tic, :title, get(axis, :title, "Chromatogram")))
     session = ExplorerSession(ExplorerRun[], 0, 1, 1, fig, ax, window, hovered_scan,
         hover_line, hover_horizontal_line, tic_zoom, xs, retention_unit, intensity_unit, options, styles,
         input isa Union{AbstractVector, Pair, NamedTuple}, ImportState(importer), XICState(),
-        IntensityScaling(ax), readout, help, nothing,
+        IntensityScaling(ax), RetentionAlignment(ax), readout, help, nothing,
         isnothing(target) ? SessionFileState(session_dialog, window.config.title) : target.storage)
     if !isnothing(target)
         for name in fieldnames(ExplorerSession)
@@ -816,7 +838,9 @@ function build_explorer(input=nothing;
         attach_run_color_controls!(session)
         attach_upper_limit_controls!(session)
         display(window, fig)
+        attach_keyboard_layout!(session)
         attach_xic!(session)
+        attach_retention_alignment!(session)
         attach_importer!(session)
         attach_help!(session)
         attach_session_files!(session)

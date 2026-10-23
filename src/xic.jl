@@ -109,8 +109,10 @@ function restore_chromatogram_zoom!(session, view)
             # including when retention history crosses a TIC/XIC boundary.
             set_chromatogram_y_request!(session, nothing)
         end
-        xs = (minimum(view.limits)[1], maximum(view.limits)[1])
+        xs = view.x_full && !isempty(session.runs) ? full_retention_limits(session) :
+            (minimum(view.limits)[1], maximum(view.limits)[1])
         xlims!(ax, ax.xreversed[] ? reverse(xs) : xs)
+        session.alignment.full_view = view.x_full
     end
     refresh_xics!(session)
     return nothing
@@ -158,7 +160,7 @@ function attach_xic_scaling!(session)
     ax, state = session.axis, session.xic
     session.zoom.context = () -> chromatogram_zoom_context(session)
     session.zoom.snapshot = (bounds, context) ->
-        ZoomView(bounds, context, chromatogram_y_request(session))
+        ZoomView(bounds, context, chromatogram_y_request(session), session.alignment.full_view)
     session.zoom.restore = (_, view) -> restore_chromatogram_zoom!(session, view)
     previous_y = Ref{Any}(last(Makie.convert_limit_attribute(ax.limits[])))
     pending_auto = Ref(false)
@@ -198,8 +200,9 @@ mutable struct RunXIC
     preview_mz::Any
     cache::Vector{Pair{Any, Vector{Float64}}}
     display_factor::Float64
+    display_offset::Float64
 end
-RunXIC() = RunXIC(nothing, nothing, Any[], Makie.RGBAf[], nothing, Pair{Any, Vector{Float64}}[], 1.0)
+RunXIC() = RunXIC(nothing, nothing, Any[], Makie.RGBAf[], nothing, Pair{Any, Vector{Float64}}[], 1.0, 0.0)
 
 function create_xic_traces!(session, data, color)
     state = RunXIC()
@@ -297,6 +300,7 @@ function update_xic_data!(session, run)
     has_spectra(run.series) || return
     state, pins = run.xic, session.xic.pinned[]
     factor = display_factor(session, run)
+    offset = display_offset(session, run)
     multiple = multi_ion_mode(session)
     mzs, colors = Any[], Makie.RGBAf[]
     if !multiple || run === active_run(session)
@@ -307,7 +311,8 @@ function update_xic_data!(session, run)
             push!(colors, multiple ? ion_color(session, index) : Makie.RGBAf(Makie.to_color(run.color)))
         end
     end
-    if !isequal(mzs, state.pinned_mzs) || colors != state.pinned_colors || factor != state.display_factor
+    if !isequal(mzs, state.pinned_mzs) || colors != state.pinned_colors ||
+        factor != state.display_factor || offset != state.display_offset
         points, point_colors = Point2d[], Makie.RGBAf[]
         for (mz, color) in zip(mzs, colors)
             if !isempty(points)
@@ -315,7 +320,7 @@ function update_xic_data!(session, run)
                 push!(point_colors, color)
             end
             values = cached_xic!(run, mz, session.intensityunit)
-            append!(points, Point2d.(run.retentions, values .* factor))
+            append!(points, Point2d.(run.retentions .+ offset, values .* factor))
             append!(point_colors, fill(color, length(values)))
         end
         # Keep one plot per run; update geometry/colors together when the number
@@ -329,14 +334,15 @@ function update_xic_data!(session, run)
         session.xic.hovered[] : nothing
     any(==(preview), pins) && (preview = nothing)
     mz = target_mz(preview, run.series)
-    if !isequal(mz, state.preview_mz) || factor != state.display_factor
+    if !isequal(mz, state.preview_mz) || factor != state.display_factor || offset != state.display_offset
         if !isnothing(mz)
             values = cached_xic!(run, mz, session.intensityunit)
-            state.preview_trace[1][] = Point2d.(run.retentions, values .* factor)
+            state.preview_trace[1][] = Point2d.(run.retentions .+ offset, values .* factor)
         end
         state.preview_mz = mz
     end
     state.display_factor = factor
+    state.display_offset = offset
     return nothing
 end
 

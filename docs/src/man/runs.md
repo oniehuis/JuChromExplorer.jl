@@ -13,6 +13,8 @@ session = explore(["Sample A" => series_a, "Sample B" => series_b])
 **←/→** cycle through the collection. Unmodified **↑/↓** do nothing;
 **Left Shift + ↑/↓** adjusts other samples relative to the focus in the upper
 panel, or the upper Y limit in a spectrum panel.
+**Left Shift + ←/→** in the upper panel shifts other runs relative to the focus;
+see [Retention offsets](interaction.md#Retention-offsets).
 The TIC title shows the active name, position, and mode, for example
 `Sample B · 2/2 · TIC`. A single-ion XIC uses `Sample B · 2/2 · XIC m/z 57 · all runs`
 for both hovering and selection, without a preview or pinned label.
@@ -69,7 +71,8 @@ After all runs are removed, new data can establish a new coordinate system unles
 units were explicitly specified at creation. `add_run!` preserves the current TIC
 retention view and manual or drag-zoomed arrangement. A new run starts with
 weight 1, the current geometric mean. Removing a run normalizes the remaining
-weights without changing their ratios. Automatic Y limits fit the focused run, so adding a run with
+weights without changing their ratios. Retention offsets start at zero for new
+runs; deletion preserves the survivors' relative alignment. Automatic Y limits fit the focused run, so adding a run with
 `activate=false` keeps the current range. Use `ylims!(session.axis, nothing,
 nothing)` to restore automatic Y limits after setting them manually. Adding the
 first run initializes the retention view.
@@ -83,6 +86,8 @@ windows or chromatographic data without mass spectra. Treat collection state as
 read-only and use the functions above to change it. `session.runs[i].weight`
 exposes the normalized positive display weight, computed from the stored
 `log_weight`; use `set_run_weight!` to change it. No run is a permanent reference.
+`session.runs[i].retention_offset` exposes the centered retention offset in display
+units; use `set_retention_offset!` to change it.
 
 Use **Left Shift + 1–9** to select a color from the window's fixed palette for the
 active run's left-axis TIC; unavailable slots do nothing. **Left Shift + 0** restores

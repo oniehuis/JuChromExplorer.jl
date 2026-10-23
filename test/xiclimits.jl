@@ -59,7 +59,7 @@ end
         pin_ion!(session, 40)
         @test xic_y(session) == chosen
         focus_panel!(session.axis)
-        upper_limit_key!(session, Keyboard.r)
+        upper_limit_key!(session, Keyboard.y)
         @test collect(xic_y(session)) ≈ collect((0, 31.5))
         @test isnothing(session.xic.scaling.manual_y)
         ylims!(session.axis, 0, 15)

@@ -61,8 +61,10 @@ function attach_upper_limit_controls!(session)
     end
     on(owner, ev.keyboardbutton; priority=2) do event
         event.action in (Keyboard.press, Keyboard.repeat) || return Consume(false)
-        event.key in (Keyboard.up, Keyboard.down, Keyboard.r, Keyboard.w) || return Consume(false)
-        event.key in (Keyboard.r, Keyboard.w) && event.action == Keyboard.repeat && return Consume(false)
+        event.key in (Keyboard.up, Keyboard.down, Keyboard.y, Keyboard.w,
+            Keyboard.left, Keyboard.right, Keyboard.r, Keyboard.f) || return Consume(false)
+        event.key in (Keyboard.y, Keyboard.w, Keyboard.r, Keyboard.f) &&
+            event.action == Keyboard.repeat && return Consume(false)
         ev.window_open[] && ev.hasfocus[] && pointer_in_window[] || return Consume(false)
         isempty(session.runs) && return Consume(false)
         ispressed(owner, Keyboard.left_shift) || return Consume(false)
@@ -75,13 +77,22 @@ function attach_upper_limit_controls!(session)
         for ax in (session.axis, session.spectrum_axis, session.result_axis)
             isnothing(ax) && continue
             ax.scene.visible[] && Makie.is_mouseinside(ax.scene) || continue
-            if event.key == Keyboard.r
+            if event.key == Keyboard.y
                 reset_upper_limit!(session, ax)
             elseif event.key == Keyboard.w
                 ax === session.axis || return Consume(false)
                 reset_weights!(session)
+            elseif event.key in (Keyboard.left, Keyboard.right, Keyboard.r, Keyboard.f)
+                ax === session.axis || return Consume(false)
+                if event.key == Keyboard.r
+                    reset_retention_offsets!(session)
+                elseif event.key == Keyboard.f
+                    fit_retention!(session)
+                else
+                    change_retention_offset!(session, event.key == Keyboard.left ? -1 : 1)
+                end
             elseif ax === session.axis
-                change_focus_weight!(session, event.key == Keyboard.up ? 1.1 : 1 / 1.1)
+                change_focus_weight!(session, event.key == Keyboard.up ? 1.05 : 1 / 1.05)
             else
                 # Follow the visible signal: Up makes peaks taller by narrowing
                 # the Y range; Down makes them shorter by widening it.

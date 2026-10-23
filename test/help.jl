@@ -44,7 +44,7 @@ end
         for ax in (session.axis, session.spectrum_axis, session.result_axis)
             move_hover!((; axis=ax), 0.8)
             tap_key!(session, Keyboard.c)
-            for key in (Keyboard.up, Keyboard.down, Keyboard.r)
+            for key in (Keyboard.up, Keyboard.down, Keyboard.y)
                 upper_limit_key!(session, key)
             end
             drag_zoom!((; axis=ax), (0.2, 0.2), (0.8, 0.8))

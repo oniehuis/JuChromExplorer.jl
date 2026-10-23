@@ -108,7 +108,9 @@ For embedded applications or tests, both `explore` and `load_session` accept
 `:open`; returning `nothing` or `""` cancels. This replaces the native picker while
 using the same storage logic.
 
-Session format 3 stores centered logarithmic weights. Format 2 sessions with
+Session format 4 also stores centered retention offsets, the retention keyboard
+step, and full-retention-view intent. Formats 1–3 load with zero offsets.
+Format 3 stores centered logarithmic weights. Format 2 sessions with
 positive weights are normalized on load without changing their relative scaling
 or saved views. Sessions written before relative scaling (format 1) load with
 sample weights of 1.

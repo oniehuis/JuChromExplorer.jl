@@ -3,7 +3,9 @@ struct ZoomView
     limits::Rect2d
     context::Int
     y_request::Any
+    x_full::Bool
 end
+ZoomView(limits, context, y_request) = ZoomView(limits, context, y_request, false)
 ZoomView(limits, context) = ZoomView(limits, context,
     (minimum(limits)[2], maximum(limits)[2]))
 

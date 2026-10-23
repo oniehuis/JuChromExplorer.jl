@@ -38,7 +38,7 @@ end
             @test maximum(ax.finallimits[])[1] == maximum(before)[1]
             @test maximum(ax.finallimits[])[2] == 110
             upper_limit_key!(session, Keyboard.up; repeats=3)
-            upper_limit_key!(session, Keyboard.r)
+            upper_limit_key!(session, Keyboard.y)
             @test minimum(ax.finallimits[])[2] == 5
             @test maximum(ax.finallimits[])[2] == 110
             drag_zoom!((; axis=ax), (0.2, 0.2), (0.8, 0.8))
@@ -49,7 +49,7 @@ end
         focus_panel!(session.axis)
         upper_limit_key!(session, Keyboard.down; repeats=3)
         @test maximum(session.axis.finallimits[])[2] == 95
-        @test session.runs[1].weight / session.runs[2].weight ≈ 1 / 1.1^4
+        @test session.runs[1].weight / session.runs[2].weight ≈ 1 / 1.05^4
     finally
         close(session.screen)
     end
@@ -67,7 +67,7 @@ end
                 upper_limit_key!(session, Keyboard.down; repeats=10)
                 @test maximum(ax.finallimits[])[2] == expected
                 upper_limit_key!(session, Keyboard.up)
-                upper_limit_key!(session, Keyboard.r)
+                upper_limit_key!(session, Keyboard.y)
                 @test maximum(ax.finallimits[])[2] == expected
             end
         finally
@@ -92,10 +92,10 @@ end
             upper_limit_key!(session, Keyboard.up; repeats=15)
             @test minimum(session.axis.finallimits[])[2] == minimum(original)[2]
             @test session.axis.finallimits[] == original
-            @test session.runs[1].weight / session.runs[2].weight ≈ 1.1^16
+            @test session.runs[1].weight / session.runs[2].weight ≈ 1.05^16
             upper_limit_key!(session, Keyboard.down; repeats=3)
             @test minimum(session.axis.finallimits[])[2] == minimum(original)[2]
-            upper_limit_key!(session, Keyboard.r)
+            upper_limit_key!(session, Keyboard.y)
             @test session.axis.finallimits[] ≈ original
             @test (session.spectrum_axis.finallimits[], session.result_axis.finallimits[]) == spectrum_limits
             @test [only(rawintensities(source, i)) for i in 1:scancount(source)] == values
@@ -122,7 +122,7 @@ end
             focus_panel!(session.axis)
             upper_limit_key!(session, Keyboard.up; repeats=5)
             @test minimum(session.axis.finallimits[])[2] == minimum(shared)[2]
-            upper_limit_key!(session, Keyboard.r)
+            upper_limit_key!(session, Keyboard.y)
             @test session.axis.finallimits[] ≈ shared
         finally
             close(session.screen)
@@ -169,7 +169,7 @@ end
         focus_panel!(session.axis)
         before = session.axis.finallimits[]
         before_weight = session.runs[1].weight
-        for key in (Keyboard.up, Keyboard.down, Keyboard.r)
+        for key in (Keyboard.up, Keyboard.down, Keyboard.y)
             tap_key!(session, key)
             upper_limit_key!(session, key; shift=Keyboard.right_shift)
             @test session.axis.finallimits[] == before
@@ -209,7 +209,7 @@ end
         ev.mouseposition[] = Tuple(area.origin + area.widths .* (0.6, 0.5))
         upper_limit_key!(session, Keyboard.up)
         @test session.axis.finallimits[] == before
-        @test session.runs[1].weight / session.runs[2].weight ≈ 1.1
+        @test session.runs[1].weight / session.runs[2].weight ≈ 1.05
         before = session.axis.finallimits[]
         before_weight = session.runs[1].weight
         ev.hasfocus[] = false
@@ -234,7 +234,7 @@ end
         focus_panel!(empty_session.axis)
         before = empty_session.axis.finallimits[]
         upper_limit_key!(empty_session, Keyboard.up)
-        upper_limit_key!(empty_session, Keyboard.r)
+        upper_limit_key!(empty_session, Keyboard.y)
         @test empty_session.axis.finallimits[] == before
     finally
         close(empty_session.screen)
@@ -254,7 +254,7 @@ end
             (session.result_axis, 110, 2))
             focus_panel!(ax)
             before = ax.finallimits[]
-            upper_limit_key!(session, Keyboard.r)
+            upper_limit_key!(session, Keyboard.y)
             @test minimum(ax.finallimits[]) == minimum(before)
             @test maximum(ax.finallimits[])[1] == maximum(before)[1]
             @test maximum(ax.finallimits[])[2] == expected
@@ -272,7 +272,7 @@ end
         @test maximum(session.spectrum_axis.finallimits[])[2] == 80
         @test maximum(session.result_axis.finallimits[])[2] == 110
         focus_panel!(session.axis)
-        upper_limit_key!(session, Keyboard.r)
+        upper_limit_key!(session, Keyboard.y)
         reset = session.axis.finallimits[]
         @test minimum(reset) == minimum(fixed)
         @test maximum(reset)[1] == maximum(fixed)[1]
@@ -308,7 +308,7 @@ end
         activate_run!(session, 2)
         ylims!(session.axis, 0, 10)
         focus_panel!(session.axis)
-        upper_limit_key!(session, Keyboard.r)
+        upper_limit_key!(session, Keyboard.y)
         @test maximum(session.axis.finallimits[])[2] ≈ 33 * 1.05
         @test !session.runs[1].trace.visible[]
         @test session.runs[2].trace.visible[]
@@ -336,7 +336,7 @@ end
         @test minimum(session.axis.finallimits[]) == minimum(zoomed)
         @test maximum(session.axis.finallimits[])[1] == maximum(zoomed)[1]
         @test session.zoom.history == history
-        upper_limit_key!(session, Keyboard.r)
+        upper_limit_key!(session, Keyboard.y)
         @test minimum(session.axis.finallimits[])[1] == minimum(zoomed)[1]
         @test minimum(session.axis.finallimits[])[2] == 0
         @test maximum(session.axis.finallimits[])[2] ≈ maximum(original)[2]
@@ -349,7 +349,7 @@ end
         ylims!(session.result_axis, 120, 150)
         focus_panel!(session.result_axis)
         before = session.result_axis.finallimits[]
-        upper_limit_key!(session, Keyboard.r)
+        upper_limit_key!(session, Keyboard.y)
         @test session.result_axis.finallimits[] == before
     finally
         close(session.screen)
@@ -365,11 +365,11 @@ end
         before = session.axis.finallimits[]
         upper_limit_key!(session, Keyboard.up)
         @test session.axis.finallimits[] == before
-        @test session.runs[1].weight / session.runs[2].weight ≈ 1.1
+        @test session.runs[1].weight / session.runs[2].weight ≈ 1.05
         @test minimum(session.axis.finallimits[])[2] == 1
         upper_limit_key!(session, Keyboard.down)
         @test session.axis.finallimits[] ≈ before
-        upper_limit_key!(session, Keyboard.r)
+        upper_limit_key!(session, Keyboard.y)
         @test maximum(session.axis.finallimits[])[2] >= 100
         @test minimum(session.axis.finallimits[])[2] == 1
         @test session.axis.xreversed[]

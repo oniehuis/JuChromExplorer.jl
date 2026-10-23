@@ -161,7 +161,7 @@ end
             @test session.options.session_compression == :none
             JLD2.jldopen(path) do file
                 @test file["format"] == JuChromExplorer.SESSION_FORMAT
-                @test file["format_version"] == 3
+                @test file["format_version"] == 4
                 @test file["versions"].juchrom == string(pkgversion(JuChrom))
                 @test file["session"].options.session_compression == :none
             end

@@ -17,9 +17,9 @@ function help_groups(session)
     groups = [
         ("Window", "← / →   Previous / next run (wrap)\nDelete / Backspace   Remove run from viewer\nLeft Shift + 1–9   Active left-axis TIC color\nLeft Shift + 0   Restore original TIC color\nRight Shift + 0–9   Right axis (reserved)\n$modifier + S   Save session\n$modifier + Shift + S   Save session as…\n$modifier + O   Open session\nShift + Q   Close window"),
         (ms ? "All three panels — under the mouse" : "Plot under the mouse",
-            "Left-drag   Zoom into a region\nDouble-click   Undo one zoom level\nLeft Shift + R   Fit/reset Y (keep weights)\nEsc   Cancel drag"),
+            "Left-drag   Zoom into a region\nDouble-click   Undo one zoom level\nLeft Shift + Y   Fit/reset Y (keep weights)\nEsc   Cancel drag"),
         (ms ? "Upper chromatogram" : "Chromatogram",
-            "Left Shift + ↑ / ↓   Other samples smaller / larger\nLeft Shift + W   Reset all sample weights\n" *
+            "Left Shift + ↑ / ↓   Other samples smaller / larger\nLeft Shift + W   Reset all sample weights\nLeft Shift + ← / →   Other samples left / right\nLeft Shift + R   Reset retention offsets\nLeft Shift + F   Fit full retention range\n" *
             (ms ? "Hover   Inspect scan\nA + click/drag   Mark scans for addition\nS + click/drag   Mark scans for subtraction\nRepeat with same key   Remove scan marks\nC   Clear scan selections" : "Hover   Inspect scan")),
     ]
     ms && push!(groups, ("Middle mass spectrum",

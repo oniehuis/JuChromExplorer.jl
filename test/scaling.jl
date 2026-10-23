@@ -134,10 +134,10 @@ end
         initial = session.axis.finallimits[]
         focus_panel!(session.axis)
         upper_limit_key!(session, Keyboard.up; repeats=2)
-        @test session.runs[1].weight / session.runs[2].weight ≈ 1.1^3
+        @test session.runs[1].weight / session.runs[2].weight ≈ 1.05^3
         @test session.axis.finallimits[] == initial
         @test trace_values(session.runs[1]) == [-20, 100, 5]
-        @test trace_values(session.runs[2]) ≈ [-40, 200, 10] ./ 1.1^3
+        @test trace_values(session.runs[2]) ≈ [-40, 200, 10] ./ 1.05^3
         @test Makie.to_color(session.axis.yticklabelcolor[]) == Makie.to_color(:red)
         @test occursin("overlays scaled", session.axis.title[])
         upper_limit_key!(session, Keyboard.down; repeats=2)
@@ -191,7 +191,7 @@ end
         drag_zoom!(session, (0.2, 0.2), (0.8, 0.8))
         xs = xic_x(session)
         focus_panel!(session.axis)
-        upper_limit_key!(session, Keyboard.r)
+        upper_limit_key!(session, Keyboard.y)
         @test xic_x(session) == xs
         @test collect(xic_y(session)) ≈ [-80, 424]
         @test [run.weight for run in session.runs] ≈ [sqrt(2), 1 / sqrt(2)]

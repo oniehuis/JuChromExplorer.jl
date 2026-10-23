@@ -99,6 +99,8 @@ function import_snapshot(session)
         history=copy(session.zoom.history),
         log_weights=[run.log_weight for run in session.runs],
         reference_log_weight=session.scaling.reference_log_weight,
+        retention_offsets=[run.retention_offset for run in session.runs],
+        alignment=deepcopy(session.alignment),
         hovered_ion=session.xic.hovered[],
         xic_scaling=deepcopy(session.xic.scaling),
         plots=copy(session.axis.scene.plots), blocks=copy(session.figure.content), attributes)
@@ -130,6 +132,10 @@ function restore_import!(session, snapshot)
         run.log_weight = value
     end
     session.scaling.reference_log_weight = snapshot.reference_log_weight
+    for (run, value) in zip(session.runs, snapshot.retention_offsets)
+        run.retention_offset = value
+    end
+    session.alignment = snapshot.alignment
     session.active_index = 0
     session.next_id = snapshot.next_id
     session.next_palette_index = snapshot.next_palette_index

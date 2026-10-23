@@ -12,7 +12,7 @@ function snapshot_axis(ax, zoom=nothing)
     attributes = (; (key => session_value(getproperty(ax, key))
         for key in Makie.attribute_names(Axis) if key != :limits && hasproperty(ax, key))...)
     history = isnothing(zoom) ? [] :
-        [(; limits=rectangle_values(view.limits), view.context, view.y_request) for view in zoom.history]
+        [(; limits=rectangle_values(view.limits), view.context, view.y_request, view.x_full) for view in zoom.history]
     return (; attributes, requested=session_value(ax.limits[]),
         displayed=rectangle_values(ax.targetlimits[]), history)
 end
@@ -42,7 +42,7 @@ end
 function session_snapshot(session)
     scale = session.xic.scaling
     runs = [(; run.id, run.name, data=run.series, color=session_value(run.color),
-        original_color=session_value(run.original_color), run.alpha, run.log_weight,
+        original_color=session_value(run.original_color), run.alpha, run.log_weight, run.retention_offset,
         run.inspected_scan, trace_style=snapshot_plot(run.trace, SESSION_LINE_ATTRIBUTES),
         panels=snapshot_panels(run.panels)) for run in session.runs]
     return (; runs, active=session.active_index, session.next_id, session.next_palette_index,
@@ -54,6 +54,9 @@ function session_snapshot(session)
         window_title=session.storage.title, axis=snapshot_axis(session.axis, session.zoom),
         relative_scaling=(; tickcolor=session_value(session.scaling.indicating ?
             session.scaling.tickcolor : session.axis.yticklabelcolor[])),
+        retention_alignment=(; session.alignment.full_view,
+            tickcolor=session_value(session.alignment.indicating ?
+                session.alignment.tickcolor : session.axis.xticklabelcolor[])),
         empty_panels=isempty(runs) ? map(snapshot_axis, session.empty_panels) : nothing,
         xic=(; pinned=[(; ion.mz, ion.unit) for ion in session.xic.pinned[]],
             hovered=isnothing(session.xic.hovered[]) ? nothing :
@@ -128,8 +131,8 @@ function read_session(path)
         haskey(file, "format") && file["format"] == SESSION_FORMAT ||
             throw(ArgumentError("This is not a JuChromExplorer session file."))
         version = get(file, "format_version", nothing)
-        version in (1, 2, SESSION_FORMAT_VERSION) || throw(ArgumentError(
-            "Unsupported session format version $version; this explorer reads versions 1, 2 and $SESSION_FORMAT_VERSION."))
+        version in (1, 2, 3, SESSION_FORMAT_VERSION) || throw(ArgumentError(
+            "Unsupported session format version $version; this explorer reads versions 1–$SESSION_FORMAT_VERSION."))
         haskey(file, "session") || throw(ArgumentError("The session payload is missing."))
         snapshot = file["session"]
         validate_session_snapshot(snapshot)
@@ -152,6 +155,7 @@ function validate_session_snapshot(snapshot)
     snapshot isa NamedTuple || throw(ArgumentError("Invalid session payload."))
     runs = snapshot.runs
     saved_log_weights(runs)
+    centered_retention_offsets([get(run, :retention_offset, 0.0) for run in runs])
     snapshot.active in (isempty(runs) ? (0:0) : (1:length(runs))) ||
         throw(ArgumentError("Invalid active run in session file."))
     ids = [run.id for run in runs]
@@ -197,7 +201,8 @@ function restore_axis!(ax, zoom, saved)
     if !isnothing(zoom)
         empty!(zoom.history)
         append!(zoom.history, [ZoomView(Rect2d(view.limits...), view.context,
-            get(view, :y_request, (view.limits[2], view.limits[2] + view.limits[4])))
+            get(view, :y_request, (view.limits[2], view.limits[2] + view.limits[4])),
+            get(view, :x_full, false))
             for view in saved.history])
     end
     return nothing
@@ -284,6 +289,7 @@ function session_explorer_options(snapshot, compression)
     return (; retentionunit=snapshot.retentionunit, intensityunit=snapshot.intensityunit,
         axis=options.axis, spectrum_axis=options.spectrum_axis, result_axis=options.result_axis,
         overlay=options.overlay, inactive_alpha=options.inactive_alpha,
+        retention_step=get(options, :retention_step, 0.0025),
         snapshot.styles..., session_compression=compression)
 end
 
@@ -349,6 +355,7 @@ function load_session!(session::ExplorerSession, path=nothing; session_compressi
             disconnect_session_window!(failed_figure, window)
             display(window, previous.figure)
         end
+        attach_keyboard_layout!(session)
         failed_figure === previous.figure || empty!(failed_figure)
         rethrow()
     end
@@ -365,14 +372,16 @@ function restore_session!(session, snapshot, compression)
     # overwriting the restored preview, selections, or limits.
     session.help.paused[] = true
     with_xic_updates_suspended(session) do
-        session.options = merge(snapshot.options, (; session_compression=compression))
+        session.options = merge((; retention_step=0.0025), snapshot.options, (; session_compression=compression))
         log_weights = saved_log_weights(snapshot.runs)
-        for (saved, log_weight) in zip(snapshot.runs, log_weights)
+        offsets = centered_retention_offsets([get(run, :retention_offset, 0.0) for run in snapshot.runs])
+        for (saved, log_weight, offset) in zip(snapshot.runs, log_weights, offsets)
             coordinates = validate_run(saved.data, saved.name, session.retentionunit, session.intensityunit)
             run = append_run!(session, saved.name, saved.data, coordinates, saved.color)
             # Older sessions predate color overrides; their saved color is the reset value.
             run.original_color = session_value(get(saved, :original_color, saved.color))
             run.log_weight = log_weight
+            run.retention_offset = offset
             run.id, run.alpha, run.inspected_scan = saved.id, saved.alpha, saved.inspected_scan
             restore_plot!(run.trace, saved.trace_style)
             if !isnothing(saved.panels)
@@ -417,6 +426,14 @@ function restore_session!(session, snapshot, compression)
         session.scaling.indicating = true
     end
     update_scaling_indicator!(session)
+    if haskey(snapshot, :retention_alignment)
+        session.alignment.tickcolor = session_value(snapshot.retention_alignment.tickcolor)
+        session.alignment.indicating = true
+        session.alignment.full_view = snapshot.retention_alignment.full_view
+    else
+        session.alignment.full_view = false
+    end
+    update_retention_indicator!(session)
     resume_help_interactions!(session)
     update_readout!(session)
     snapshot.help_visible && set_help_visible!(session, true)

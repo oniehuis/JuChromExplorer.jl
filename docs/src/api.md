@@ -25,6 +25,9 @@ activate_run!
 next_run!
 set_run_weight!
 reset_weights!
+set_retention_offset!
+reset_retention_offsets!
+fit_retention!
 ```
 
 ## Importing files

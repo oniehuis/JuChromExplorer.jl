@@ -10,11 +10,13 @@ display_factor(session, run) = exp(run.log_weight - session.scaling.reference_lo
 
 function update_tic_data!(session, run)
     factor = display_factor(session, run)
-    factor == run.display_factor && return
+    offset = display_offset(session, run)
+    factor == run.display_factor && offset == run.display_offset && return
     # Update the original Lines argument, keeping the unscaled intensity cache
     # separate from both Makie's converted geometry and the source scan data.
-    Makie.update!(run.trace; arg2=run.tic_values .* factor)
+    Makie.update!(run.trace; arg1=run.retentions .+ offset, arg2=run.tic_values .* factor)
     run.display_factor = factor
+    run.display_offset = offset
     return nothing
 end
 
@@ -53,7 +55,7 @@ function rebase_intensity_view!(session, log_weight)
     state.manual_y = scale_y_request(state.manual_y, factor)
     map!(session.zoom.history, session.zoom.history) do view
         ZoomView(scale_y_bounds(view.limits, factor), view.context,
-            scale_y_request(view.y_request, factor))
+            scale_y_request(view.y_request, factor), view.x_full)
     end
     ax = session.axis
     xs, ys = Makie.convert_limit_attribute(ax.limits[])

@@ -21,8 +21,11 @@ under the mouse; scan and ion selection require mass-spectral data.
 | Any of the three panels | **Double-click** | Undo one zoom step |
 | Upper chromatogram | **Left Shift + ↑ / ↓** | Reduce / increase other samples relative to the focus |
 | Upper chromatogram | **Left Shift + W** | Restore all sample weights to 1 |
+| Upper chromatogram | **Left Shift + ← / →** | Move other samples left / right relative to the focus |
+| Upper chromatogram | **Left Shift + R** | Clear all retention offsets |
+| Upper chromatogram | **Left Shift + F** | Fit the full retention range, retaining offsets |
 | Spectrum panels | **Left Shift + ↑ / ↓** | Make peaks taller / shorter |
-| Any of the three panels | **Left Shift + R** | Fit the focused chromatogram, or reset the spectrum upper limit; retain weights |
+| Any of the three panels | **Left Shift + Y** | Fit the focused chromatogram, or reset the spectrum upper limit; retain weights |
 | During a drag | **Esc** | Cancel zoom, or stop scan brushing |
 | Upper chromatogram | **Hover** | Inspect the nearest scan |
 | Upper chromatogram | **A / S + left-click or drag** | Mark scans for addition / subtraction; repeat to erase |
@@ -39,6 +42,14 @@ with number-row or numeric-keypad keys and the palette fixed when the window was
 Bare digits, Right Shift alone, both Shift keys together, and extra modifiers do not recolor the left-axis TIC.
 They apply anywhere in the focused window, with no mouse button held. See
 [Changing the active run's color](styling.md#Changing-the-active-run's-color).
+
+Letter shortcuts follow the active keyboard layout: **Y** means the key labelled
+Y on QWERTY, German QWERTZ, and French AZERTY keyboards. The mapping applies to
+held-letter gestures too and updates when the layout changes. Non-Latin letter
+names or unavailable key names use the standard US key position as a fallback.
+Punctuation on a former letter position does not trigger that letter's shortcut.
+Arrow, modifier, number-row, and keypad controls retain their standard
+positions.
 
 ## Hovering over scans
 
@@ -143,11 +154,11 @@ the current geometric mean. With only one sample, the normalized weight stays 1.
 
 With the pointer inside the upper panel:
 
-- **Left Shift + ↑** increases the focused sample's weight relative to the others by 1.1. Other
-  samples' displayed intensities are divided by 1.1.
+- **Left Shift + ↑** increases the focused sample's weight relative to the others by 1.05. Other
+  samples' displayed intensities are divided by 1.05.
 - **Left Shift + ↓** reverses that adjustment, multiplying the other samples'
-  displayed intensities by 1.1.
-- **Left Shift + R** fits the focused signal's full Y range, retaining weights
+  displayed intensities by 1.05.
+- **Left Shift + Y** fits the focused signal's full Y range, retaining weights
   and the current retention view.
 - **Left Shift + W** restores all weights to 1, retaining the current view.
 
@@ -193,11 +204,57 @@ To multiply an existing weight by a factor, pass `session.runs[i].weight * facto
 with `index=i`. Adjustments that would make a relative display factor overflow or
 underflow are rejected; keyboard adjustments stop at that limit.
 
+## Retention offsets
+
+The upper panel's X axis always gives the focused run's true retention coordinate.
+This may be retention time, an index, or another compatible retention coordinate.
+Each run has a signed offset, initially zero. TICs and XICs are plotted at
+`retention + run_offset - focus_offset`. Original data, scan indices, selections,
+readouts, and extracted spectra remain unchanged.
+
+With the pointer inside the upper panel, **Left Shift + ←/→** moves all other runs
+left/right while the focused trace and viewport stay fixed. Holding an arrow
+repeats the adjustment. Each press moves by 0.25% of the visible retention span;
+zoom in for finer adjustment, or configure `explore(...; retention_step=0.01)`
+for 1% steps. Reversed axes follow the visible arrow direction. Offsets require
+a linear retention axis. Bare arrows still switch the focused run.
+
+Changing focus translates the X limits and every saved zoom view to the new
+focus's true coordinates, preserving the displayed relative alignment. Offsets
+apply to the entire run, including scans outside the current zoom. Zoom undo
+retains the latest offsets; returning to a saved full view includes the shifted
+extents of all loaded runs, including negative display coordinates.
+**Left Shift + F** fits that full retention range at any time without changing
+intensity limits. **Left Shift + R** clears all retention offsets while
+retaining intensity weights and the current viewport.
+
+Red X tick labels and “retentions shifted” in the title indicate visible shifted
+overlays. The Y indicator remains independent. Offsets and zoom-view intent are
+saved in sessions. Offsets have arithmetic mean zero, so no run is a permanent
+reference and a common displacement cannot accumulate. Removing a run preserves
+the remaining pairwise differences. New runs start at the current mean, zero.
+
+From Julia:
+
+```julia
+set_retention_offset!(session, 0.2; index=2)  # in the displayed retention unit
+set_retention_offset!(session, 6u"s")        # converted to the displayed unit
+fit_retention!(session)
+reset_retention_offsets!(session)
+```
+
+`set_retention_offset!` assigns a value relative to the current centered offsets,
+then recenters all runs. To increment an existing offset, pass
+`session.runs[i].retention_offset + delta` with `index=i`. A positive offset moves
+that run toward higher retention relative to the others; when it is the focus,
+the other runs move toward lower retention instead. Unitless axes take numeric
+offsets. This is a constant display translation without interpolation or warping.
+
 ## Spectrum Y limits
 
 In either spectrum panel, **Left Shift + ↑ / ↓** retains its previous behavior:
 make peaks taller / shorter by dividing / multiplying the displayed Y range by 1.1.
-The lower bound and retention/mass range stay fixed. **Left Shift + R** restores
+The lower bound and retention/mass range stay fixed. **Left Shift + Y** restores
 the configured upper limit (normally 110%, including label headroom above the
 100% base peak). Zoom-out stops at that configured default. A reset that would
 put the upper bound at or below the current lower bound leaves the view unchanged.

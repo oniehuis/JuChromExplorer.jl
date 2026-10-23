@@ -70,6 +70,10 @@ over all retentions. Linear axes include zero, any negative values, and 5% upper
 headroom. Zero-only channels use 0–1. Logarithmic axes use positive values and
 log-space headroom. Other samples may extend beyond that range.
 
+TICs and XICs share each sample's persistent retention offset. **Left Shift + ←/→**
+shifts the other runs relative to the focus without altering ion extraction or
+scan selection. See [Retention offsets](interaction.md#Retention-offsets).
+
 TICs and XICs share each sample's persistent display weight. **Left Shift + ↑/↓**
 adjusts the other samples relative to the fixed focus; negative values scale about
 zero. **Left Shift + W** restores all weights to 1. See
@@ -77,7 +81,7 @@ zero. **Left Shift + W** restores all weights to 1. See
 
 Rectangle zoom and `ylims!` override fitting while the
 selection remains active, including when changing between one and multiple ions. Changing focus rebases
-manual limits and zoom history to preserve the displayed arrangement. **Left Shift + R** in the upper panel resumes automatic fitting,
+manual limits and zoom history to preserve the displayed arrangement. **Left Shift + Y** in the upper panel resumes automatic fitting,
 including the lower bound. `ylims!(session.axis, nothing, nothing)` does the same;
 partial limits such as `ylims!(session.axis, 0, nothing)` fix one bound while fitting
 the other. Automatic limits adapt to selection, navigation, and added/removed runs.

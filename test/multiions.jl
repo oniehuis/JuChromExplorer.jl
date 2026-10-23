@@ -224,7 +224,7 @@ end
             @test session.runs[2].xic.pinned_colors == colors
             @test !session.runs[1].xic.pinned_trace.visible[]
             focus_panel!(session.axis)
-            upper_limit_key!(session, Keyboard.r)
+            upper_limit_key!(session, Keyboard.y)
             @test collect(xic_y(session)) ≈ [0, 315]
             move_hover!(session, 0.01)
             pin_ion!(session, 40)

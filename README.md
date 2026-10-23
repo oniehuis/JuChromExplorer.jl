@@ -59,8 +59,13 @@ help, or **Shift+Q** to close the window. The Julia REPL remains available.
 
 In the chromatogram, **Left Shift + ↑/↓** scales the other samples relative to
 the focused sample, whose intensities remain correct on the Y axis. Weights
-survive zoom and saved sessions. **Left Shift + R** fits the focused signal;
+survive zoom and saved sessions. **Left Shift + Y** fits the focused signal;
 **Left Shift + W** restores all weights to 1.
+
+**Left Shift + ←/→** shifts other runs left/right while the focus retains its true
+retention coordinates. Offsets apply to TICs and XICs and survive zoom and saved
+sessions. **Left Shift + R** clears offsets; **Left Shift + F** fits the
+full retention range. Red X tick labels identify shifted overlays.
 
 Press **Cmd+S** on macOS or **Ctrl+S** on Windows/Linux to save all loaded data and
 working views in a JLD2 session. Add **Shift** for Save As, or use **Cmd+O / Ctrl+O**
