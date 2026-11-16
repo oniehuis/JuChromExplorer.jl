@@ -2,17 +2,14 @@
 CoverageTools = "c36e975a-824b-4404-a568-ef97ca766997"
 GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
 JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
-Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
 JuChrom = "202feb93-6b30-4454-a2e9-99db6534a6fb"
 JuChromExplorer = "0f21023a-da05-425f-b34e-2272dc96a0ef"
+Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
-[sources.JuChrom]
-rev = "41f86fab54e73b9db44a8475930729062bc9854f"
-url = "https://github.com/oniehuis/JuChrom.jl"
-
-[sources.JuChromExplorer]
-path = ".."
+[sources]
+JuChrom = {rev = "9e38ea5429450492c2495957074c4adfaa4529d6", url = "https://github.com/oniehuis/JuChrom.jl"}
+JuChromExplorer = {path = ".."}
 
 [compat]
 CoverageTools = "1.4"

@@ -10,7 +10,7 @@ JuChrom = "202feb93-6b30-4454-a2e9-99db6534a6fb"
 NativeFileDialog = "e1fe445b-aa65-4df4-81c1-2041507f0fd4"
 
 [sources]
-JuChrom = {rev = "41f86fab54e73b9db44a8475930729062bc9854f", url = "https://github.com/oniehuis/JuChrom.jl"}
+JuChrom = {rev = "9e38ea5429450492c2495957074c4adfaa4529d6", url = "https://github.com/oniehuis/JuChrom.jl"}
 
 [compat]
 GLMakie = "0.13.15"
