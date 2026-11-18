@@ -15,6 +15,6 @@ JuChrom = {rev = "9e38ea5429450492c2495957074c4adfaa4529d6", url = "https://gith
 [compat]
 GLMakie = "0.13.15"
 JLD2 = "0.6.7"
-JuChrom = "0.0.1"
+JuChrom = "0.0.1, 0.1"
 NativeFileDialog = "0.2.1"
 julia = "1.12"
